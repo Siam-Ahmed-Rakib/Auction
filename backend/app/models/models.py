@@ -37,35 +37,43 @@ class StringUUID(TypeDecorator):
 
 
 class JSONEncodedList(TypeDecorator):
-    """Store list as JSON string for SQLite compatibility."""
+    """Store list as JSON string for SQLite compatibility, also handles PostgreSQL arrays."""
     impl = Text
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is not None:
-            return json.dumps(value)
+            if isinstance(value, list):
+                return json.dumps(value)
+            return value
         return "[]"
 
     def process_result_value(self, value, dialect):
-        if value is not None:
-            return json.loads(value)
-        return []
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        return json.loads(value)
 
 
 class JSONEncodedDict(TypeDecorator):
-    """Store dict as JSON string for SQLite compatibility."""
+    """Store dict as JSON string for SQLite compatibility, also handles PostgreSQL JSONB."""
     impl = Text
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is not None:
-            return json.dumps(value)
+            if isinstance(value, dict):
+                return json.dumps(value)
+            return value
         return None
 
     def process_result_value(self, value, dialect):
-        if value is not None:
-            return json.loads(value)
-        return None
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return value
+        return json.loads(value)
 
 
 class AuctionStatus(str, enum.Enum):
