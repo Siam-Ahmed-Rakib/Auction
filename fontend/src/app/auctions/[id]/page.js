@@ -7,7 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useSocket } from '@/context/SocketContext';
 import { formatPrice, formatDate } from '@/lib/utils';
 import CountdownTimer from '@/components/CountdownTimer';
-import { Heart, Share2, AlertCircle, CheckCircle2, Shield, ChevronDown, Eye, Clock } from 'lucide-react';
+import { Heart, Share2, AlertCircle, CheckCircle2, Shield, ChevronDown, Eye, Clock, Gavel, User as UserIcon } from 'lucide-react';
 
 export default function AuctionDetailPage() {
   const { id } = useParams();
@@ -27,6 +27,8 @@ export default function AuctionDetailPage() {
   const [isWatching, setIsWatching] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showShipping, setShowShipping] = useState(false);
+  const [showBids, setShowBids] = useState(true);
+  const [outbidToast, setOutbidToast] = useState(null);
 
   const loadAuction = useCallback(async () => {
     try {
@@ -59,14 +61,23 @@ export default function AuctionDetailPage() {
             currentPrice: data.currentPrice,
             _count: { ...prev._count, bids: data.bidCount }
           } : prev);
+          // Refresh full auction data to get updated bid list
+          loadAuction();
+        }
+      });
+      socket.on('outbid', (data) => {
+        if (data.auctionId === id) {
+          setOutbidToast({ title: data.title, currentPrice: data.currentPrice });
+          setTimeout(() => setOutbidToast(null), 6000);
         }
       });
       return () => {
         socket.emit('leave-auction', id);
         socket.off('bid-update');
+        socket.off('outbid');
       };
     }
-  }, [socket, id]);
+  }, [socket, id, loadAuction]);
 
   const handlePlaceBid = async () => {
     if (!user) return router.push('/auth/login');
@@ -328,7 +339,94 @@ export default function AuctionDetailPage() {
             <p>Location: {auction.location || 'Not specified'}</p>
           </div>
         )}
+
+        {/* Bid History */}
+        <button
+          onClick={() => setShowBids(!showBids)}
+          className="w-full flex items-center justify-between py-4 text-left font-bold border-t"
+        >
+          <span className="flex items-center gap-2">
+            <Gavel className="w-5 h-5" />
+            Bid history ({auction.bids?.length || 0} bids)
+          </span>
+          <ChevronDown className={`w-5 h-5 transition ${showBids ? 'rotate-180' : ''}`} />
+        </button>
+        {showBids && (
+          <div className="pb-4">
+            {auction.bids?.length > 0 ? (
+              <div className="border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="text-left px-4 py-2.5 font-medium text-ebay-gray">Bidder</th>
+                      <th className="text-right px-4 py-2.5 font-medium text-ebay-gray">Amount</th>
+                      <th className="text-right px-4 py-2.5 font-medium text-ebay-gray hidden sm:table-cell">Type</th>
+                      <th className="text-right px-4 py-2.5 font-medium text-ebay-gray">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {auction.bids.map((bid, idx) => (
+                      <tr key={bid.id} className={`${idx === 0 ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 bg-ebay-blue rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                              {bid.bidder?.username?.[0]?.toUpperCase() || <UserIcon className="w-3 h-3" />}
+                            </div>
+                            <span className="font-medium truncate max-w-[120px]">
+                              {bid.bidder?.username || 'Anonymous'}
+                            </span>
+                            {idx === 0 && bid.isWinning && (
+                              <span className="text-[10px] bg-green-600 text-white px-1.5 py-0.5 rounded font-medium">HIGHEST</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-right font-semibold">{formatPrice(bid.amount)}</td>
+                        <td className="px-4 py-2.5 text-right hidden sm:table-cell">
+                          {bid.isProxy ? (
+                            <span className="text-xs text-ebay-gray bg-gray-100 px-2 py-0.5 rounded">Auto</span>
+                          ) : (
+                            <span className="text-xs text-ebay-blue bg-blue-50 px-2 py-0.5 rounded">Manual</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-ebay-gray text-xs">{formatDate(bid.createdAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-ebay-gray">
+                <Gavel className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                <p className="text-sm">No bids yet. Be the first to bid!</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Outbid Toast */}
+      {outbidToast && (
+        <div className="fixed top-4 right-4 z-50 animate-in slide-in-from-right bg-orange-50 border border-orange-200 rounded-xl shadow-lg p-4 max-w-sm">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+              <Gavel className="w-4 h-4 text-orange-600" />
+            </div>
+            <div className="flex-1">
+              <p className="font-semibold text-sm text-orange-800">You&apos;ve been outbid!</p>
+              <p className="text-xs text-orange-700 mt-0.5">
+                Current price: {formatPrice(outbidToast.currentPrice)}
+              </p>
+              <button
+                onClick={() => { setOutbidToast(null); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                className="text-xs text-ebay-blue hover:underline mt-1"
+              >
+                Place a higher bid
+              </button>
+            </div>
+            <button onClick={() => setOutbidToast(null)} className="text-gray-400 hover:text-gray-600">&times;</button>
+          </div>
+        </div>
+      )}
 
       {/* Bid Confirmation Modal */}
       {showBidModal && (

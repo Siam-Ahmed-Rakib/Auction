@@ -3,8 +3,10 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useSocket } from '@/context/SocketContext';
 import api from '@/lib/api';
-import { Search, Bell, ShoppingCart, ChevronDown, User, Heart, Package, Menu, X } from 'lucide-react';
+import { formatPrice } from '@/lib/utils';
+import { Search, Bell, ShoppingCart, ChevronDown, User, Heart, Package, Menu, X, Gavel } from 'lucide-react';
 
 const CATEGORIES = [
   'Electronics', 'Fashion', 'Motors', 'Collectibles and Art',
@@ -15,10 +17,12 @@ const CATEGORIES = [
 export default function Navbar() {
   const { user, logout } = useAuth();
   const router = useRouter();
+  const socket = useSocket();
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [outbidToast, setOutbidToast] = useState(null);
   const menuRef = useRef(null);
 
   // Close dropdown when clicking outside
@@ -32,13 +36,38 @@ export default function Navbar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Fetch initial unread count
   useEffect(() => {
     if (user) {
       api.getNotifications({ unreadOnly: 'true' })
-        .then(data => setUnreadCount(data.unreadCount))
+        .then(data => setUnreadCount(data.unreadCount || 0))
         .catch(() => {});
     }
   }, [user]);
+
+  // Real-time notification updates via socket
+  useEffect(() => {
+    if (socket && user) {
+      const handleNotification = () => {
+        setUnreadCount(prev => prev + 1);
+      };
+      const handleOutbid = (data) => {
+        setUnreadCount(prev => prev + 1);
+        setOutbidToast({
+          auctionId: data.auctionId,
+          title: data.title,
+          currentPrice: data.currentPrice,
+        });
+        setTimeout(() => setOutbidToast(null), 8000);
+      };
+      socket.on('notification', handleNotification);
+      socket.on('outbid', handleOutbid);
+      return () => {
+        socket.off('notification', handleNotification);
+        socket.off('outbid', handleOutbid);
+      };
+    }
+  }, [socket, user]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -239,6 +268,32 @@ export default function Navbar() {
               <Link href="/auth/register" className="block py-2" onClick={() => setMobileMenuOpen(false)}>Register</Link>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Outbid Toast Notification */}
+      {outbidToast && (
+        <div className="fixed top-4 right-4 z-[100] bg-white border border-orange-200 rounded-xl shadow-xl p-4 max-w-sm animate-in slide-in-from-right">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+              <Gavel className="w-5 h-5 text-orange-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-sm text-orange-800">You&apos;ve been outbid!</p>
+              <p className="text-sm text-gray-700 mt-0.5 truncate">{outbidToast.title}</p>
+              {outbidToast.currentPrice && (
+                <p className="text-xs text-ebay-gray mt-0.5">Current price: {formatPrice(outbidToast.currentPrice)}</p>
+              )}
+              <Link
+                href={`/auctions/${outbidToast.auctionId}`}
+                onClick={() => setOutbidToast(null)}
+                className="inline-block text-xs text-ebay-blue hover:underline font-medium mt-2"
+              >
+                View auction &rarr;
+              </Link>
+            </div>
+            <button onClick={() => setOutbidToast(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>
+          </div>
         </div>
       )}
     </header>
