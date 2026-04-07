@@ -26,7 +26,12 @@ app = FastAPI(title="Auction API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
+    allow_origins=[
+        settings.FRONTEND_URL,
+        "http://localhost:3000",
+        "https://auction-ebay-ot5c3q471-siams-projects-6928afe7.vercel.app",
+        "https://auction-ebay-isd.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
