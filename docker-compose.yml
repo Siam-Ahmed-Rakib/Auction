@@ -25,6 +25,7 @@ services:
       - "5000:5000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/auction_db
+      DIRECT_URL: postgresql://postgres:postgres@postgres:5432/auction_db
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
       JWT_EXPIRES_IN: 7d
       PORT: 5000
