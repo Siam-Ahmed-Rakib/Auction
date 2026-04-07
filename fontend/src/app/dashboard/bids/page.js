@@ -72,7 +72,7 @@ export default function BidsPage() {
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar */}
         <aside className="w-full lg:w-56 flex-shrink-0">
-          <h2 className="text-xl font-bold mb-4">My AuctionHub</h2>
+          <h2 className="text-xl font-bold mb-4">My eBay</h2>
           <nav className="space-y-1 text-sm">
             <Link href="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-gray-100">Summary</Link>
             <Link href="/dashboard/bids" className="block px-3 py-2 rounded-lg bg-gray-100 font-bold">Bids & offers</Link>
@@ -244,7 +244,7 @@ export default function BidsPage() {
             <h3 className="font-bold text-sm flex items-center gap-2">💡 Bidding Tips</h3>
             <ul className="mt-2 space-y-1 text-xs text-ebay-gray list-disc pl-5">
               <li>Set your maximum bid to the highest amount you&apos;re willing to pay</li>
-              <li>AuctionHub will automatically bid on your behalf up to your maximum amount</li>
+              <li>eBay will automatically bid on your behalf up to your maximum amount</li>
               <li>Watch items ending soon - many auctions see last-minute bidding activity</li>
               <li>Check the seller&apos;s feedback and shipping costs before bidding</li>
             </ul>

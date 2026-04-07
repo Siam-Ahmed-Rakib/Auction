@@ -375,7 +375,7 @@ export default function CreateAuctionPage() {
 
         {/* Submit */}
         <div className="pt-4 border-t flex items-center justify-between">
-          <p className="text-xs text-ebay-gray">By listing, you agree to AuctionHub&apos;s seller terms.</p>
+          <p className="text-xs text-ebay-gray">By listing, you agree to eBay&apos;s seller terms.</p>
           <button
             type="submit"
             disabled={submitting}

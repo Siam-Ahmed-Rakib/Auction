@@ -5,7 +5,7 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 
 export const metadata = {
-  title: 'AuctionHub - Online Auction Platform',
+  title: 'eBay - Online Auction Platform',
   description: 'Buy and sell items through exciting online auctions. eBay-style bidding platform.',
 };
 

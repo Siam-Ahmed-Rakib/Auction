@@ -22,7 +22,7 @@ export default function Footer() {
             </ul>
           </div>
           <div>
-            <h3 className="font-bold mb-3">About AuctionHub</h3>
+            <h3 className="font-bold mb-3">About eBay</h3>
             <ul className="space-y-2 text-ebay-gray">
               <li><Link href="/" className="hover:underline">Company info</Link></li>
               <li><Link href="/" className="hover:underline">Policies</Link></li>
@@ -39,7 +39,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="border-t border-gray-200 mt-8 pt-6 text-center text-xs text-ebay-gray">
-          <p>Copyright © 2026 AuctionHub Inc. All Rights Reserved.</p>
+          <p>Copyright © 2026 eBay Inc. All Rights Reserved.</p>
           <p className="mt-1">
             <Link href="/" className="hover:underline">User Agreement</Link> |{' '}
             <Link href="/" className="hover:underline">Privacy</Link> |{' '}

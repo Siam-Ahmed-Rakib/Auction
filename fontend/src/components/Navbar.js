@@ -69,7 +69,7 @@ export default function Navbar() {
                   Watchlist <ChevronDown className="inline w-3 h-3" />
                 </Link>
                 <Link href="/dashboard" className="hover:underline hidden sm:inline">
-                  My AuctionHub <ChevronDown className="inline w-3 h-3" />
+                  My eBay <ChevronDown className="inline w-3 h-3" />
                 </Link>
                 <button onClick={() => router.push('/notifications')} className="relative">
                   <Bell className="w-4 h-4" />
@@ -89,17 +89,11 @@ export default function Navbar() {
       <div className="bg-white px-4 lg:px-8 py-2">
         <div className="max-w-[1400px] mx-auto flex items-center gap-4">
           <Link href="/" className="flex-shrink-0">
-            <span className="text-2xl font-bold">
-              <span className="text-ebay-red">A</span>
-              <span className="text-ebay-blue">u</span>
-              <span className="text-ebay-yellow">c</span>
-              <span className="text-ebay-green">t</span>
-              <span className="text-ebay-red">i</span>
-              <span className="text-ebay-blue">o</span>
-              <span className="text-ebay-yellow">n</span>
-              <span className="text-ebay-green">H</span>
-              <span className="text-ebay-red">u</span>
+            <span className="text-2xl font-bold italic">
+              <span className="text-ebay-red">e</span>
               <span className="text-ebay-blue">b</span>
+              <span className="text-ebay-yellow">a</span>
+              <span className="text-ebay-green">y</span>
             </span>
           </Link>
 
