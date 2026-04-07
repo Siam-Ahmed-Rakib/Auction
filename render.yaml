@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: auctionhub-api
+    runtime: node
+    plan: free
+    buildCommand: cd backend && npm install && npx prisma generate
+    startCommand: cd backend && npm start
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: NODE_ENV
+        value: production

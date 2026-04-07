@@ -1,0 +1,261 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  username       String         @unique
+  password       String
+  name           String
+  address        String?
+  city           String?
+  state          String?
+  zipCode        String?
+  country        String?
+  phone          String?
+  avatarUrl      String?
+  rating         Float          @default(0)
+  totalRatings   Int            @default(0)
+  positiveRate   Float          @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  auctions       Auction[]      @relation("SellerAuctions")
+  bids           Bid[]
+  buyerOrders    Order[]        @relation("BuyerOrders")
+  sellerOrders   Order[]        @relation("SellerOrders")
+  feedbackGiven  Feedback[]     @relation("FeedbackFrom")
+  feedbackReceived Feedback[]   @relation("FeedbackTo")
+  disputesRaised Dispute[]
+  notifications  Notification[]
+  watchlist      Watchlist[]
+}
+
+model Auction {
+  id             String         @id @default(uuid())
+  title          String
+  description    String
+  images         String[]
+  category       String
+  condition      String         @default("New")
+  startPrice     Float
+  reservePrice   Float?
+  currentPrice   Float
+  bidIncrement   Float          @default(1.00)
+  startTime      DateTime
+  endTime        DateTime
+  status         AuctionStatus  @default(DRAFT)
+  shippingCost   Float          @default(0)
+  shippingMethod String?
+  location       String?
+  returnPolicy   String?
+  views          Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  sellerId       String
+  seller         User           @relation("SellerAuctions", fields: [sellerId], references: [id])
+
+  bids           Bid[]
+  order          Order?
+  watchlist      Watchlist[]
+
+  @@index([status])
+  @@index([category])
+  @@index([endTime])
+  @@index([sellerId])
+}
+
+model Bid {
+  id             String         @id @default(uuid())
+  amount         Float
+  maxBid         Float
+  isProxy        Boolean        @default(false)
+  isWinning      Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+
+  auctionId      String
+  auction        Auction        @relation(fields: [auctionId], references: [id])
+
+  bidderId       String
+  bidder         User           @relation(fields: [bidderId], references: [id])
+
+  @@index([auctionId])
+  @@index([bidderId])
+}
+
+model Order {
+  id              String        @id @default(uuid())
+  orderNumber     String        @unique
+  totalAmount     Float
+  itemAmount      Float
+  shippingAmount  Float         @default(0)
+  discountAmount  Float         @default(0)
+  status          OrderStatus   @default(PENDING_PAYMENT)
+  shippingAddress String?
+  trackingNumber  String?
+  shippingCarrier String?
+  estimatedDelivery DateTime?
+  deliveredAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  auctionId       String        @unique
+  auction         Auction       @relation(fields: [auctionId], references: [id])
+
+  buyerId         String
+  buyer           User          @relation("BuyerOrders", fields: [buyerId], references: [id])
+
+  sellerId        String
+  seller          User          @relation("SellerOrders", fields: [sellerId], references: [id])
+
+  payment         Payment?
+  feedback        Feedback[]
+  dispute         Dispute?
+
+  @@index([buyerId])
+  @@index([sellerId])
+}
+
+model Payment {
+  id              String        @id @default(uuid())
+  amount          Float
+  method          String        @default("card")
+  status          PaymentStatus @default(PENDING)
+  transactionId   String?       @unique
+  heldUntil       DateTime?
+  releasedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  orderId         String        @unique
+  order           Order         @relation(fields: [orderId], references: [id])
+}
+
+model Feedback {
+  id              String        @id @default(uuid())
+  rating          Int
+  communication   Int?
+  shipping        Int?
+  description     Int?
+  comment         String?
+  type            FeedbackType
+  createdAt       DateTime      @default(now())
+
+  orderId         String
+  order           Order         @relation(fields: [orderId], references: [id])
+
+  fromUserId      String
+  fromUser        User          @relation("FeedbackFrom", fields: [fromUserId], references: [id])
+
+  toUserId        String
+  toUser          User          @relation("FeedbackTo", fields: [toUserId], references: [id])
+
+  @@unique([orderId, fromUserId])
+}
+
+model Dispute {
+  id              String        @id @default(uuid())
+  reason          String
+  description     String
+  status          DisputeStatus @default(OPEN)
+  resolution      String?
+  resolvedAt      DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  orderId         String        @unique
+  order           Order         @relation(fields: [orderId], references: [id])
+
+  raisedById      String
+  raisedBy        User          @relation(fields: [raisedById], references: [id])
+}
+
+model Notification {
+  id              String        @id @default(uuid())
+  type            NotificationType
+  title           String
+  message         String
+  read            Boolean       @default(false)
+  data            Json?
+  createdAt       DateTime      @default(now())
+
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+
+  @@index([userId, read])
+}
+
+model Watchlist {
+  id              String        @id @default(uuid())
+  createdAt       DateTime      @default(now())
+
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+
+  auctionId       String
+  auction         Auction       @relation(fields: [auctionId], references: [id])
+
+  @@unique([userId, auctionId])
+}
+
+enum AuctionStatus {
+  DRAFT
+  ACTIVE
+  ENDED
+  SOLD
+  CANCELLED
+  RESERVE_NOT_MET
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PAID
+  SHIPPED
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  HELD
+  COMPLETED
+  RELEASED
+  REFUNDED
+  FAILED
+}
+
+enum FeedbackType {
+  BUYER_TO_SELLER
+  SELLER_TO_BUYER
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+  ESCALATED
+}
+
+enum NotificationType {
+  OUTBID
+  AUCTION_WON
+  AUCTION_ENDED
+  PAYMENT_RECEIVED
+  ITEM_SHIPPED
+  ITEM_DELIVERED
+  FEEDBACK_RECEIVED
+  DISPUTE_OPENED
+  DISPUTE_RESOLVED
+  WATCHLIST_ENDING
+  BID_PLACED
+}
