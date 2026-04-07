@@ -1,16 +1,19 @@
 'use client';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import api from '@/lib/api';
 import { CATEGORIES, CONDITIONS } from '@/lib/utils';
-import { ImagePlus, X, Loader2 } from 'lucide-react';
+import { ImagePlus, X, Loader2, Upload } from 'lucide-react';
 
 export default function CreateAuctionPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const [images, setImages] = useState([]); // [{file, preview, url, uploading}]
+  const fileInputRef = useRef(null);
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -21,7 +24,6 @@ export default function CreateAuctionPage() {
     buyNowPrice: '',
     shippingCost: '',
     duration: '7',
-    images: [''],
   });
 
   const durations = [
@@ -37,22 +39,54 @@ export default function CreateAuctionPage() {
     if (errors[field]) setErrors(prev => ({ ...prev, [field]: null }));
   }
 
-  function addImageField() {
-    setForm(prev => ({ ...prev, images: [...prev.images, ''] }));
+  async function handleFiles(files) {
+    const newImages = [];
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      if (images.length + newImages.length >= 8) break;
+      newImages.push({
+        file,
+        preview: URL.createObjectURL(file),
+        url: null,
+        uploading: true,
+      });
+    }
+    setImages(prev => [...prev, ...newImages]);
+
+    // Upload each file to Supabase Storage
+    for (let i = 0; i < newImages.length; i++) {
+      const img = newImages[i];
+      const ext = img.file.name.split('.').pop();
+      const path = `uploads/${user.id}/${crypto.randomUUID()}.${ext}`;
+      try {
+        const { error } = await supabase.storage
+          .from('auction-images')
+          .upload(path, img.file, { contentType: img.file.type, upsert: false });
+        if (error) throw error;
+        const { data: urlData } = supabase.storage
+          .from('auction-images')
+          .getPublicUrl(path);
+        setImages(prev =>
+          prev.map(p =>
+            p.preview === img.preview ? { ...p, url: urlData.publicUrl, uploading: false } : p
+          )
+        );
+      } catch (err) {
+        setImages(prev =>
+          prev.map(p =>
+            p.preview === img.preview ? { ...p, uploading: false, error: err.message } : p
+          )
+        );
+      }
+    }
   }
 
   function removeImage(index) {
-    setForm(prev => ({
-      ...prev,
-      images: prev.images.filter((_, i) => i !== index),
-    }));
-  }
-
-  function updateImage(index, value) {
-    setForm(prev => ({
-      ...prev,
-      images: prev.images.map((img, i) => (i === index ? value : img)),
-    }));
+    setImages(prev => {
+      const removed = prev[index];
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
   }
 
   function validate() {
@@ -76,9 +110,13 @@ export default function CreateAuctionPage() {
       setErrors(errs);
       return;
     }
+    if (images.some(img => img.uploading)) {
+      setErrors({ submit: 'Please wait for images to finish uploading.' });
+      return;
+    }
     setSubmitting(true);
     try {
-      const images = form.images.filter(u => u.trim() !== '');
+      const imageUrls = images.filter(img => img.url).map(img => img.url);
       const endTime = new Date(Date.now() + parseInt(form.duration) * 24 * 60 * 60 * 1000);
       const payload = {
         title: form.title.trim(),
@@ -90,7 +128,7 @@ export default function CreateAuctionPage() {
         buyNowPrice: form.buyNowPrice ? parseFloat(form.buyNowPrice) : undefined,
         shippingCost: form.shippingCost ? parseFloat(form.shippingCost) : 0,
         endTime: endTime.toISOString(),
-        images,
+        images: imageUrls,
       };
       const result = await api.createAuction(payload);
       router.push(`/auctions/${result.id}`);
@@ -186,30 +224,60 @@ export default function CreateAuctionPage() {
 
         {/* Images */}
         <div>
-          <label className="block text-sm font-medium mb-1">Images (URLs)</label>
-          <p className="text-xs text-ebay-gray mb-2">Paste image URLs. The first image will be the cover photo.</p>
-          <div className="space-y-2">
-            {form.images.map((url, i) => (
-              <div key={i} className="flex gap-2">
-                <input
-                  type="url"
-                  value={url}
-                  onChange={e => updateImage(i, e.target.value)}
-                  placeholder="https://example.com/photo.jpg"
-                  className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-                {form.images.length > 1 && (
-                  <button type="button" onClick={() => removeImage(i)} className="text-ebay-gray hover:text-red-500">
-                    <X className="w-4 h-4" />
+          <label className="block text-sm font-medium mb-1">Photos</label>
+          <p className="text-xs text-ebay-gray mb-2">Upload up to 8 photos. The first image will be the cover photo.</p>
+
+          {/* Upload area */}
+          {images.length < 8 && (
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={e => { e.preventDefault(); e.stopPropagation(); }}
+              onDrop={e => { e.preventDefault(); e.stopPropagation(); handleFiles(Array.from(e.dataTransfer.files)); }}
+              className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-ebay-blue hover:bg-blue-50/30 transition"
+            >
+              <Upload className="w-8 h-8 mx-auto text-ebay-gray mb-2" />
+              <p className="text-sm text-ebay-gray">Drag &amp; drop images here, or <span className="text-ebay-blue underline">browse</span></p>
+              <p className="text-xs text-ebay-gray mt-1">JPG, PNG, WebP — max 5MB each</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={e => handleFiles(Array.from(e.target.files))}
+              />
+            </div>
+          )}
+
+          {/* Image previews */}
+          {images.length > 0 && (
+            <div className="grid grid-cols-4 gap-3 mt-3">
+              {images.map((img, i) => (
+                <div key={i} className="relative group aspect-square rounded-lg overflow-hidden border border-gray-200">
+                  <img src={img.preview} alt={`Upload ${i + 1}`} className="w-full h-full object-cover" />
+                  {img.uploading && (
+                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                      <Loader2 className="w-6 h-6 text-white animate-spin" />
+                    </div>
+                  )}
+                  {img.error && (
+                    <div className="absolute inset-0 bg-red-500/40 flex items-center justify-center">
+                      <span className="text-white text-xs px-1 text-center">Failed</span>
+                    </div>
+                  )}
+                  {i === 0 && !img.uploading && !img.error && (
+                    <span className="absolute top-1 left-1 bg-ebay-blue text-white text-[10px] px-1.5 py-0.5 rounded">Cover</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeImage(i)}
+                    className="absolute top-1 right-1 bg-black/60 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition"
+                  >
+                    <X className="w-3.5 h-3.5" />
                   </button>
-                )}
-              </div>
-            ))}
-          </div>
-          {form.images.length < 8 && (
-            <button type="button" onClick={addImageField} className="mt-2 text-sm text-ebay-blue flex items-center gap-1 hover:underline">
-              <ImagePlus className="w-4 h-4" /> Add another image
-            </button>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
