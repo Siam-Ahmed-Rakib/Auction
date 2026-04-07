@@ -16,6 +16,7 @@ from sqlalchemy import (
     TypeDecorator,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.config.database import Base
@@ -23,9 +24,14 @@ from app.config.database import Base
 
 # Cross-database compatible types
 class StringUUID(TypeDecorator):
-    """Platform-independent UUID type that uses String."""
+    """Platform-independent UUID type: native UUID on PostgreSQL, String(36) on others."""
     impl = String(36)
     cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_UUID(as_uuid=False))
+        return dialect.type_descriptor(String(36))
 
     def process_bind_param(self, value, dialect):
         if value is not None:
@@ -33,6 +39,8 @@ class StringUUID(TypeDecorator):
         return value
 
     def process_result_value(self, value, dialect):
+        if value is not None:
+            return str(value)
         return value
 
 
