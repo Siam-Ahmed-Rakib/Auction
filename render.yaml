@@ -7,16 +7,14 @@ services:
     dockerContext: ./backend
     envVars:
       - key: DATABASE_URL
-        sync: false  # Set in Render dashboard: postgresql+asyncpg://user:pass@host:5432/postgres
+        sync: false  # Set in Render dashboard: postgresql+asyncpg://postgres.lmthclkskkechzyfenuf:PASSWORD@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres
       - key: DIRECT_URL
-        sync: false  # Set in Render dashboard: postgresql+asyncpg://user:pass@host:5432/postgres
-      - key: JWT_SECRET
-        generateValue: true
-      - key: JWT_EXPIRES_IN
-        value: 7d
-      - key: JWT_ALGORITHM
-        value: HS256
+        sync: false  # Set in Render dashboard
+      - key: SUPABASE_JWT_SECRET
+        sync: false  # Set in Render dashboard (JWKS kid, not HS256 secret)
+      - key: SUPABASE_URL
+        value: https://lmthclkskkechzyfenuf.supabase.co
       - key: PORT
         value: 5000
       - key: FRONTEND_URL
-        sync: false  # Set in Render dashboard: https://your-app.vercel.app
+        value: https://auction-ebay-isd.vercel.app

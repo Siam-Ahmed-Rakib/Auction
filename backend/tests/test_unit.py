@@ -8,6 +8,7 @@ def test_imports():
     from app.config.settings import Settings
     assert User is not None
     assert Auction is not None
+    
     assert Bid is not None
     assert AuctionStatus.ACTIVE == "ACTIVE"
 
@@ -19,8 +20,10 @@ def test_settings_defaults():
         DATABASE_URL="sqlite:///:memory:",
         DIRECT_URL="sqlite:///:memory:",
     )
-    assert settings.JWT_ALGORITHM == "HS256"
+    # Check default port
     assert settings.PORT == 5000
+    # Check DATABASE_URL is set
+    assert settings.DATABASE_URL == "sqlite:///:memory:"
 
 
 def test_password_hashing():

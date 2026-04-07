@@ -16,6 +16,7 @@ from sqlalchemy import (
     TypeDecorator,
     UniqueConstraint,
 )
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.config.database import Base
@@ -23,49 +24,66 @@ from app.config.database import Base
 
 # Cross-database compatible types
 class StringUUID(TypeDecorator):
-    """Platform-independent UUID type that uses String."""
+    """Platform-independent UUID type: native UUID on PostgreSQL, String(36) on others."""
     impl = String(36)
     cache_ok = True
 
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_UUID(as_uuid=True))
+        return dialect.type_descriptor(String(36))
+
     def process_bind_param(self, value, dialect):
         if value is not None:
+            if dialect.name == "postgresql":
+                return uuid.UUID(str(value)) if not isinstance(value, uuid.UUID) else value
             return str(value)
         return value
 
     def process_result_value(self, value, dialect):
+        if value is not None:
+            return str(value)
         return value
 
 
 class JSONEncodedList(TypeDecorator):
-    """Store list as JSON string for SQLite compatibility."""
+    """Store list as JSON string for SQLite compatibility, also handles PostgreSQL arrays."""
     impl = Text
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is not None:
-            return json.dumps(value)
+            if isinstance(value, list):
+                return json.dumps(value)
+            return value
         return "[]"
 
     def process_result_value(self, value, dialect):
-        if value is not None:
-            return json.loads(value)
-        return []
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        return json.loads(value)
 
 
 class JSONEncodedDict(TypeDecorator):
-    """Store dict as JSON string for SQLite compatibility."""
+    """Store dict as JSON string for SQLite compatibility, also handles PostgreSQL JSONB."""
     impl = Text
     cache_ok = True
 
     def process_bind_param(self, value, dialect):
         if value is not None:
-            return json.dumps(value)
+            if isinstance(value, dict):
+                return json.dumps(value)
+            return value
         return None
 
     def process_result_value(self, value, dialect):
-        if value is not None:
-            return json.loads(value)
-        return None
+        if value is None:
+            return None
+        if isinstance(value, dict):
+            return value
+        return json.loads(value)
 
 
 class AuctionStatus(str, enum.Enum):
