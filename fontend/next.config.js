@@ -1,7 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   images: {
-    domains: ['localhost', 'via.placeholder.com', 'picsum.photos'],
+    domains: ['localhost', 'via.placeholder.com', 'picsum.photos', 'images.unsplash.com'],
     unoptimized: true
   },
   env: {

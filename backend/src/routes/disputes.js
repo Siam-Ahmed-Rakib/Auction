@@ -2,14 +2,14 @@ const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
-const { authenticate } = require('../middleware/auth');
+const { auth } = require('../middleware/auth');
 const { body, validationResult } = require('express-validator');
 const { createNotification } = require('../services/notificationService');
 
 // Open a dispute
 router.post(
   '/',
-  authenticate,
+  auth,
   [
     body('orderId').notEmpty().withMessage('Order ID is required'),
     body('reason').notEmpty().withMessage('Reason is required'),
@@ -70,7 +70,7 @@ router.post(
 );
 
 // Get disputes for user
-router.get('/', authenticate, async (req, res, next) => {
+router.get('/', auth, async (req, res, next) => {
   try {
     const disputes = await prisma.dispute.findMany({
       where: {
@@ -99,7 +99,7 @@ router.get('/', authenticate, async (req, res, next) => {
 });
 
 // Get single dispute
-router.get('/:id', authenticate, async (req, res, next) => {
+router.get('/:id', auth, async (req, res, next) => {
   try {
     const dispute = await prisma.dispute.findUnique({
       where: { id: req.params.id },
@@ -131,7 +131,7 @@ router.get('/:id', authenticate, async (req, res, next) => {
 // Resolve dispute (mock admin action — in production, this would be admin-only)
 router.put(
   '/:id/resolve',
-  authenticate,
+  auth,
   [body('resolution').notEmpty().withMessage('Resolution is required')],
   async (req, res, next) => {
     try {
