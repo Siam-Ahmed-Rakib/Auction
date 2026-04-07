@@ -1,6 +1,3 @@
 {
-  "buildCommand": "cd fontend && npm install && npm run build",
-  "outputDirectory": "fontend/.next",
-  "framework": "nextjs",
-  "installCommand": "cd fontend && npm install"
+  "framework": "nextjs"
 }
