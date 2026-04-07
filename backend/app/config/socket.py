@@ -4,7 +4,7 @@ from app.config.settings import settings
 
 sio = socketio.AsyncServer(
     async_mode="asgi",
-    cors_allowed_origins=[settings.FRONTEND_URL, "http://localhost:3000"],
+    cors_allowed_origins="*",
 )
 
 

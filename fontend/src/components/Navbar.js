@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
@@ -19,6 +19,18 @@ export default function Navbar() {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowUserMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -120,15 +132,31 @@ export default function Navbar() {
           </form>
 
           {user && (
-            <div className="relative hidden lg:block">
+            <div className="relative hidden lg:block" ref={menuRef}>
               <button
                 onClick={() => setShowUserMenu(!showUserMenu)}
-                className="flex items-center gap-1 text-sm hover:text-ebay-blue"
+                className="flex items-center gap-2 text-sm hover:text-ebay-blue"
               >
-                <User className="w-5 h-5" />
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    className="w-8 h-8 rounded-full object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-ebay-blue text-white flex items-center justify-center text-sm font-semibold">
+                    {user.name?.charAt(0)?.toUpperCase() || 'U'}
+                  </div>
+                )}
+                <span className="max-w-[100px] truncate font-medium">{user.name?.split(' ')[0]}</span>
+                <ChevronDown className="w-3 h-3" />
               </button>
               {showUserMenu && (
-                <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-48 z-50">
+                <div className="absolute right-0 top-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg py-2 w-56 z-50">
+                  <div className="px-4 py-3 border-b border-gray-100">
+                    <p className="text-sm font-semibold text-gray-900 truncate">{user.name}</p>
+                    <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                  </div>
                   <Link href="/dashboard" className="block px-4 py-2 hover:bg-gray-50 text-sm" onClick={() => setShowUserMenu(false)}>
                     Dashboard
                   </Link>
@@ -192,6 +220,19 @@ export default function Navbar() {
         <div className="lg:hidden bg-white border-t px-4 py-4">
           {user ? (
             <div className="space-y-2">
+              <div className="flex items-center gap-3 py-2 border-b border-gray-100 mb-2 pb-3">
+                {user.avatarUrl ? (
+                  <img src={user.avatarUrl} alt={user.name} className="w-10 h-10 rounded-full object-cover border border-gray-200" />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-ebay-blue text-white flex items-center justify-center font-semibold">
+                    {user.name?.charAt(0)?.toUpperCase() || 'U'}
+                  </div>
+                )}
+                <div>
+                  <p className="font-semibold text-sm">{user.name}</p>
+                  <p className="text-xs text-gray-500">{user.email}</p>
+                </div>
+              </div>
               <Link href="/dashboard" className="block py-2" onClick={() => setMobileMenuOpen(false)}>Dashboard</Link>
               <Link href="/dashboard/bids" className="block py-2" onClick={() => setMobileMenuOpen(false)}>Bids & Offers</Link>
               <Link href="/dashboard/selling" className="block py-2" onClick={() => setMobileMenuOpen(false)}>Selling</Link>

@@ -1,25 +1,17 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException
-from jose import jwt
-from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr
-from sqlalchemy import or_, select
+from fastapi import APIRouter, Depends, HTTPException, Request
+from jose import JWTError, jwt
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.database import get_db
 from app.config.settings import settings
-from app.middleware.auth import get_current_user
+from app.middleware.auth import get_current_user, _decode_supabase_token
 from app.models.models import User
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def create_token(user_id: str) -> str:
-    expire_days = int(settings.JWT_EXPIRES_IN.replace("d", "")) if "d" in settings.JWT_EXPIRES_IN else 7
-    expire = datetime.utcnow() + timedelta(days=expire_days)
-    return jwt.encode({"userId": user_id, "exp": expire}, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
 def user_to_dict(user: User, include_private: bool = False) -> dict:
@@ -46,20 +38,9 @@ def user_to_dict(user: User, include_private: bool = False) -> dict:
     return d
 
 
-class RegisterRequest(BaseModel):
-    email: EmailStr
-    username: str
-    password: str
-    name: str
-
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
 class UpdateProfileRequest(BaseModel):
     name: str | None = None
+    username: str | None = None
     address: str | None = None
     city: str | None = None
     state: str | None = None
@@ -68,43 +49,74 @@ class UpdateProfileRequest(BaseModel):
     phone: str | None = None
 
 
-@router.post("/register", status_code=201)
-async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    if len(body.username) < 3 or len(body.username) > 30:
-        raise HTTPException(status_code=400, detail="Username must be 3-30 characters")
-    if len(body.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+@router.post("/sync")
+async def sync_user(request: Request, db: AsyncSession = Depends(get_db)):
+    """Sync a Supabase-authenticated user to the application database.
+    Creates the User row if it doesn't exist, returns the user profile."""
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.startswith("Bearer "):
+        print(f"[AUTH SYNC] No Bearer token. Auth header: '{auth_header[:30] if auth_header else 'EMPTY'}'")
+        raise HTTPException(status_code=401, detail="Authentication required")
 
-    result = await db.execute(
-        select(User).where(or_(User.email == body.email, User.username == body.username))
+    token = auth_header.split(" ")[1]
+    try:
+        payload = _decode_supabase_token(token)
+    except JWTError as e:
+        print(f"[AUTH SYNC] JWT decode error: {e}")
+        print(f"[AUTH SYNC] Token prefix: {token[:50]}...")
+        print(f"[AUTH SYNC] Secret: {settings.SUPABASE_JWT_SECRET[:10]}...")
+        raise HTTPException(status_code=401, detail=f"Invalid or expired token: {str(e)}")
+    except Exception as e:
+        print(f"[AUTH SYNC] Unexpected error: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=401, detail=f"Token error: {str(e)}")
+
+    sub = payload.get("sub")
+    email = payload.get("email", "")
+    user_metadata = payload.get("user_metadata", {})
+    name = user_metadata.get("name") or user_metadata.get("full_name") or email.split("@")[0]
+    username = user_metadata.get("username") or email.split("@")[0]
+    avatar = user_metadata.get("avatar_url") or user_metadata.get("picture")
+    provider = payload.get("app_metadata", {}).get("provider", "email")
+
+    if not sub or not email:
+        raise HTTPException(status_code=401, detail="Invalid token claims")
+
+    # Check if user already exists
+    result = await db.execute(select(User).where(User.id == sub))
+    user = result.scalar_one_or_none()
+
+    if user:
+        # Update provider info if changed
+        if avatar and not user.avatarUrl:
+            user.avatarUrl = avatar
+        if provider != "email" and user.authProvider == "local":
+            user.authProvider = provider
+        await db.commit()
+        await db.refresh(user)
+        return user_to_dict(user, include_private=True)
+
+    # Ensure unique username
+    base_username = username
+    counter = 1
+    while True:
+        check = await db.execute(select(User).where(User.username == username))
+        if not check.scalar_one_or_none():
+            break
+        username = f"{base_username}{counter}"
+        counter += 1
+
+    user = User(
+        id=sub,
+        email=email,
+        username=username,
+        name=name,
+        authProvider=provider,
+        avatarUrl=avatar,
     )
-    existing = result.scalar_one_or_none()
-    if existing:
-        detail = "Email already registered" if existing.email == body.email else "Username taken"
-        raise HTTPException(status_code=409, detail=detail)
-
-    hashed = pwd_context.hash(body.password)
-    user = User(email=body.email, username=body.username, password=hashed, name=body.name)
     db.add(user)
     await db.commit()
     await db.refresh(user)
-
-    token = create_token(user.id)
-    return {
-        "user": {"id": user.id, "email": user.email, "username": user.username, "name": user.name, "createdAt": user.createdAt.isoformat()},
-        "token": token,
-    }
-
-
-@router.post("/login")
-async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == body.email))
-    user = result.scalar_one_or_none()
-    if not user or not pwd_context.verify(body.password, user.password):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token = create_token(user.id)
-    return {"user": user_to_dict(user), "token": token}
+    return user_to_dict(user, include_private=True)
 
 
 @router.get("/me")

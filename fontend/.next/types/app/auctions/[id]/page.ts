@@ -1,4 +1,4 @@
-// File: E:\3-2\Auction\frontend\src\app\auctions\[id]\page.js
+// File: E:\isd\Auction\fontend\src\app\auctions\[id]\page.js
 import * as entry from '../../../../../src/app/auctions/[id]/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

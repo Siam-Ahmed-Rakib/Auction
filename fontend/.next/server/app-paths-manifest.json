@@ -1,17 +1,9 @@
 {
-  "/_not-found": "app/_not-found.js",
-  "/auth/register/page": "app/auth/register/page.js",
-  "/auctions/[id]/page": "app/auctions/[id]/page.js",
+  "/not-found": "app/not-found.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/auctions/create/page": "app/auctions/create/page.js",
-  "/dashboard/purchases/page": "app/dashboard/purchases/page.js",
-  "/auth/login/page": "app/auth/login/page.js",
-  "/notifications/page": "app/notifications/page.js",
-  "/dashboard/bids/page": "app/dashboard/bids/page.js",
-  "/dashboard/watchlist/page": "app/dashboard/watchlist/page.js",
-  "/dashboard/selling/page": "app/dashboard/selling/page.js",
   "/search/page": "app/search/page.js",
-  "/page": "app/page.js",
-  "/payment-success/[id]/page": "app/payment-success/[id]/page.js",
-  "/checkout/[id]/page": "app/checkout/[id]/page.js"
+  "/notifications/page": "app/notifications/page.js",
+  "/auth/login/page": "app/auth/login/page.js",
+  "/auctions/[id]/page": "app/auctions/[id]/page.js",
+  "/dashboard/bids/page": "app/dashboard/bids/page.js"
 }

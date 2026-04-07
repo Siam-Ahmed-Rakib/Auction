@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api';
 
 class ApiClient {
@@ -5,9 +7,10 @@ class ApiClient {
     this.baseUrl = API_URL;
   }
 
-  getToken() {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('token');
+  async getToken() {
+    if (typeof window !== 'undefined' && supabase) {
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.access_token || null;
     }
     return null;
   }
@@ -19,7 +22,7 @@ class ApiClient {
       ...options.headers,
     };
 
-    const token = this.getToken();
+    const token = await this.getToken();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -32,15 +35,14 @@ class ApiClient {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Something went wrong');
+      throw new Error(data.detail || data.error || 'Something went wrong');
     }
 
     return data;
   }
 
-  // Auth
-  async register(userData) { return this.request('/auth/register', { method: 'POST', body: JSON.stringify(userData) }); }
-  async login(credentials) { return this.request('/auth/login', { method: 'POST', body: JSON.stringify(credentials) }); }
+  // Auth - sync Supabase user to backend
+  async syncUser() { return this.request('/auth/sync', { method: 'POST' }); }
   async getMe() { return this.request('/auth/me'); }
   async updateProfile(data) { return this.request('/auth/me', { method: 'PUT', body: JSON.stringify(data) }); }
 

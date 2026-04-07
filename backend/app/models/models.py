@@ -1,4 +1,5 @@
 import enum
+import json
 import uuid
 from datetime import datetime
 
@@ -12,12 +13,59 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.config.database import Base
+
+
+# Cross-database compatible types
+class StringUUID(TypeDecorator):
+    """Platform-independent UUID type that uses String."""
+    impl = String(36)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return str(value)
+        return value
+
+    def process_result_value(self, value, dialect):
+        return value
+
+
+class JSONEncodedList(TypeDecorator):
+    """Store list as JSON string for SQLite compatibility."""
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return json.dumps(value)
+        return "[]"
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return json.loads(value)
+        return []
+
+
+class JSONEncodedDict(TypeDecorator):
+    """Store dict as JSON string for SQLite compatibility."""
+    impl = Text
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return json.dumps(value)
+        return None
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return json.loads(value)
+        return None
 
 
 class AuctionStatus(str, enum.Enum):
@@ -78,11 +126,13 @@ class NotificationType(str, enum.Enum):
 class User(Base):
     __tablename__ = "User"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     username: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    password: Mapped[str] = mapped_column(String, nullable=False)
+    password: Mapped[str | None] = mapped_column(String, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    googleId: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    authProvider: Mapped[str] = mapped_column(String, default="local")
     address: Mapped[str | None] = mapped_column(String, nullable=True)
     city: Mapped[str | None] = mapped_column(String, nullable=True)
     state: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -110,10 +160,10 @@ class User(Base):
 class Auction(Base):
     __tablename__ = "Auction"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    images: Mapped[list] = mapped_column(ARRAY(String), default=[])
+    images: Mapped[list] = mapped_column(JSONEncodedList(), default=[])
     category: Mapped[str] = mapped_column(String, nullable=False)
     condition: Mapped[str] = mapped_column(String, default="New")
     startPrice: Mapped[float] = mapped_column(Float, nullable=False)
@@ -131,7 +181,7 @@ class Auction(Base):
     createdAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updatedAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    sellerId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("User.id"), nullable=False)
+    sellerId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("User.id"), nullable=False)
     seller = relationship("User", back_populates="auctions", foreign_keys=[sellerId])
 
     bids = relationship("Bid", back_populates="auction", order_by="Bid.createdAt.desc()")
@@ -149,17 +199,17 @@ class Auction(Base):
 class Bid(Base):
     __tablename__ = "Bid"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     maxBid: Mapped[float] = mapped_column(Float, nullable=False)
     isProxy: Mapped[bool] = mapped_column(Boolean, default=False)
     isWinning: Mapped[bool] = mapped_column(Boolean, default=False)
     createdAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    auctionId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("Auction.id"), nullable=False)
+    auctionId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("Auction.id"), nullable=False)
     auction = relationship("Auction", back_populates="bids")
 
-    bidderId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("User.id"), nullable=False)
+    bidderId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("User.id"), nullable=False)
     bidder = relationship("User", back_populates="bids")
 
     __table_args__ = (
@@ -171,7 +221,7 @@ class Bid(Base):
 class Order(Base):
     __tablename__ = "Order"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     orderNumber: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     totalAmount: Mapped[float] = mapped_column(Float, nullable=False)
     itemAmount: Mapped[float] = mapped_column(Float, nullable=False)
@@ -186,13 +236,13 @@ class Order(Base):
     createdAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updatedAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    auctionId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("Auction.id"), unique=True, nullable=False)
+    auctionId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("Auction.id"), unique=True, nullable=False)
     auction = relationship("Auction", back_populates="order")
 
-    buyerId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("User.id"), nullable=False)
+    buyerId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("User.id"), nullable=False)
     buyer = relationship("User", back_populates="buyerOrders", foreign_keys=[buyerId])
 
-    sellerId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("User.id"), nullable=False)
+    sellerId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("User.id"), nullable=False)
     seller = relationship("User", back_populates="sellerOrders", foreign_keys=[sellerId])
 
     payment = relationship("Payment", back_populates="order", uselist=False)
@@ -208,7 +258,7 @@ class Order(Base):
 class Payment(Base):
     __tablename__ = "Payment"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     method: Mapped[str] = mapped_column(String, default="card")
     status: Mapped[PaymentStatus] = mapped_column(Enum(PaymentStatus, name="PaymentStatus", create_type=False), default=PaymentStatus.PENDING)
@@ -218,14 +268,14 @@ class Payment(Base):
     createdAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updatedAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    orderId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("Order.id"), unique=True, nullable=False)
+    orderId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("Order.id"), unique=True, nullable=False)
     order = relationship("Order", back_populates="payment")
 
 
 class Feedback(Base):
     __tablename__ = "Feedback"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
     communication: Mapped[int | None] = mapped_column(Integer, nullable=True)
     shipping: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -234,13 +284,13 @@ class Feedback(Base):
     type: Mapped[FeedbackType] = mapped_column(Enum(FeedbackType, name="FeedbackType", create_type=False), nullable=False)
     createdAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    orderId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("Order.id"), nullable=False)
+    orderId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("Order.id"), nullable=False)
     order = relationship("Order", back_populates="feedback")
 
-    fromUserId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("User.id"), nullable=False)
+    fromUserId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("User.id"), nullable=False)
     fromUser = relationship("User", back_populates="feedbackGiven", foreign_keys=[fromUserId])
 
-    toUserId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("User.id"), nullable=False)
+    toUserId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("User.id"), nullable=False)
     toUser = relationship("User", back_populates="feedbackReceived", foreign_keys=[toUserId])
 
     __table_args__ = (
@@ -251,7 +301,7 @@ class Feedback(Base):
 class Dispute(Base):
     __tablename__ = "Dispute"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     reason: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=True, default="")
     status: Mapped[DisputeStatus] = mapped_column(Enum(DisputeStatus, name="DisputeStatus", create_type=False), default=DisputeStatus.OPEN)
@@ -260,25 +310,25 @@ class Dispute(Base):
     createdAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updatedAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    orderId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("Order.id"), unique=True, nullable=False)
+    orderId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("Order.id"), unique=True, nullable=False)
     order = relationship("Order", back_populates="dispute")
 
-    raisedById: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("User.id"), nullable=False)
+    raisedById: Mapped[str] = mapped_column(StringUUID(), ForeignKey("User.id"), nullable=False)
     raisedBy = relationship("User", back_populates="disputesRaised")
 
 
 class Notification(Base):
     __tablename__ = "Notification"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     type: Mapped[NotificationType] = mapped_column(Enum(NotificationType, name="NotificationType", create_type=False), nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
     read: Mapped[bool] = mapped_column(Boolean, default=False)
-    data: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    data: Mapped[dict | None] = mapped_column(JSONEncodedDict(), nullable=True)
     createdAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    userId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("User.id"), nullable=False)
+    userId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("User.id"), nullable=False)
     user = relationship("User", back_populates="notifications")
 
     __table_args__ = (
@@ -289,13 +339,13 @@ class Notification(Base):
 class Watchlist(Base):
     __tablename__ = "Watchlist"
 
-    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     createdAt: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    userId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("User.id"), nullable=False)
+    userId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("User.id"), nullable=False)
     user = relationship("User", back_populates="watchlist")
 
-    auctionId: Mapped[str] = mapped_column(UUID(as_uuid=False), ForeignKey("Auction.id"), nullable=False)
+    auctionId: Mapped[str] = mapped_column(StringUUID(), ForeignKey("Auction.id"), nullable=False)
     auction = relationship("Auction", back_populates="watchlist")
 
     __table_args__ = (
