@@ -1,16 +1,22 @@
 services:
   - type: web
-    name: auctionhub-api
-    runtime: node
+    name: auction-api
+    runtime: docker
     plan: free
-    buildCommand: cd backend && npm install && npx prisma generate
-    startCommand: cd backend && npm start
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
     envVars:
       - key: DATABASE_URL
-        sync: false
+        sync: false  # Set in Render dashboard: postgresql+asyncpg://user:pass@host:5432/postgres
+      - key: DIRECT_URL
+        sync: false  # Set in Render dashboard: postgresql+asyncpg://user:pass@host:5432/postgres
       - key: JWT_SECRET
         generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: PORT
+        value: 5000
       - key: FRONTEND_URL
-        sync: false
-      - key: NODE_ENV
-        value: production
+        sync: false  # Set in Render dashboard: https://your-app.vercel.app
