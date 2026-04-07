@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 
-app = FastAPI(title="Auction API", lifespan=lifespan)
+app = FastAPI(title="Auction API", lifespan=lifespan, redirect_slashes=False)
 
 
 @app.exception_handler(Exception)
