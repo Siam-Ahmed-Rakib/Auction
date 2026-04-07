@@ -80,11 +80,15 @@ export default function AuctionDetailPage() {
       setBidResult(result);
       setShowBidModal(false);
       setShowBidSuccess(true);
-      loadAuction();
     } catch (err) {
-      setBidError(err.message);
+      // Bid may have been placed even if the response failed (server timeout)
+      // Close the modal and refresh data to check
+      setShowBidModal(false);
+      setBidError('');
     } finally {
       setBidding(false);
+      // Always re-fetch auction data to get the latest state
+      await loadAuction();
     }
   };
 

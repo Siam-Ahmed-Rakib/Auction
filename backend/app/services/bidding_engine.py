@@ -1,12 +1,104 @@
+import asyncio
 from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config.database import async_session
 from app.config.socket import sio
 from app.models.models import Auction, Bid
 from app.services.notification_service import create_notification
+
+
+async def _post_bid_side_effects(
+    auction_id: str,
+    auction_title: str,
+    bidder_id: str,
+    new_current_price: float,
+    previous_bidder_id: str | None,
+):
+    """Run notifications and socket emissions in the background so they don't block the bid response."""
+    try:
+        async with async_session() as db:
+            # Notify previous highest bidder they were outbid
+            if previous_bidder_id and previous_bidder_id != bidder_id:
+                try:
+                    await create_notification(
+                        db, previous_bidder_id, "OUTBID", "You've been outbid!",
+                        f'Another bidder has outbid you on "{auction_title}". Current price: ${new_current_price:.2f}',
+                        {"auctionId": auction_id},
+                    )
+                except Exception:
+                    pass
+                try:
+                    await sio.emit("outbid", {
+                        "auctionId": auction_id, "title": auction_title, "currentPrice": new_current_price,
+                    }, room=f"user:{previous_bidder_id}")
+                except Exception:
+                    pass
+
+            # Notify bidder
+            try:
+                await create_notification(
+                    db, bidder_id, "BID_PLACED", "Bid placed!",
+                    f'Your bid of ${new_current_price:.2f} on "{auction_title}" was placed successfully.',
+                    {"auctionId": auction_id},
+                )
+            except Exception:
+                pass
+
+            # Emit bid update to auction room
+            bid_count_r = await db.execute(select(func.count(Bid.id)).where(Bid.auctionId == auction_id))
+            bid_count = bid_count_r.scalar()
+
+            try:
+                await sio.emit("bid-update", {
+                    "auctionId": auction_id,
+                    "currentPrice": new_current_price,
+                    "bidCount": bid_count,
+                    "highestBidderId": bidder_id,
+                }, room=f"auction:{auction_id}")
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
+async def _post_outbid_side_effects(
+    auction_id: str,
+    auction_title: str,
+    bidder_id: str,
+    new_current_price: float,
+    winning_bidder_id: str,
+):
+    """Background side effects for outbid scenario."""
+    try:
+        async with async_session() as db:
+            try:
+                await create_notification(
+                    db, bidder_id, "OUTBID", "You've been outbid!",
+                    f'Someone has a higher maximum bid on "{auction_title}". Current price: ${new_current_price:.2f}',
+                    {"auctionId": auction_id},
+                )
+            except Exception:
+                pass
+
+            bid_count_r = await db.execute(select(func.count(Bid.id)).where(Bid.auctionId == auction_id))
+            bid_count = bid_count_r.scalar()
+
+            try:
+                await sio.emit("bid-update", {
+                    "auctionId": auction_id,
+                    "currentPrice": new_current_price,
+                    "bidCount": bid_count,
+                    "highestBidderId": winning_bidder_id,
+                }, room=f"auction:{auction_id}")
+                await sio.emit("outbid", {"auctionId": auction_id, "title": auction_title}, room=f"user:{bidder_id}")
+            except Exception:
+                pass
+    except Exception:
+        pass
 
 
 async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount: float, max_bid: float) -> dict:
@@ -36,7 +128,7 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
     if max_bid < amount:
         raise ValueError("Maximum bid must be greater than or equal to bid amount")
 
-    # Check proxy bidding scenario
+    # Check proxy bidding scenario — new bid loses to existing max bid
     if current_highest_bid and current_highest_bid.bidderId != bidder_id:
         prev_max_result = await db.execute(
             select(Bid)
@@ -76,31 +168,17 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
                 update(Bid).where(Bid.id == current_highest_bid.id).values(isWinning=False)
             )
 
-            # Update auction price
+            # Update auction price and commit
             auction.currentPrice = new_current_price
             await db.commit()
-
-            await create_notification(
-                db, bidder_id, "OUTBID", "You've been outbid!",
-                f'Someone has a higher maximum bid on "{auction.title}". Current price: ${new_current_price:.2f}',
-                {"auctionId": auction_id},
-            )
-
-            bid_count_r = await db.execute(select(func.count(Bid.id)).where(Bid.auctionId == auction_id))
-            bid_count = bid_count_r.scalar()
-
-            try:
-                await sio.emit("bid-update", {
-                    "auctionId": auction_id,
-                    "currentPrice": new_current_price,
-                    "bidCount": bid_count,
-                    "highestBidderId": current_highest_bid.bidderId,
-                }, room=f"auction:{auction_id}")
-                await sio.emit("outbid", {"auctionId": auction_id, "title": auction.title}, room=f"user:{bidder_id}")
-            except Exception:
-                pass
-
             await db.refresh(new_bid)
+
+            # Fire-and-forget side effects (notifications, socket)
+            asyncio.create_task(_post_outbid_side_effects(
+                auction_id, auction.title, bidder_id,
+                new_current_price, current_highest_bid.bidderId,
+            ))
+
             return {
                 "bid": {
                     "id": new_bid.id, "amount": new_bid.amount, "isProxy": new_bid.isProxy,
@@ -128,6 +206,8 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
     else:
         new_current_price = amount
 
+    previous_bidder_id = current_highest_bid.bidderId if current_highest_bid and current_highest_bid.bidderId != bidder_id else None
+
     # Mark previous winning bids
     await db.execute(
         update(Bid).where(Bid.auctionId == auction_id, Bid.isWinning == True).values(isWinning=False)
@@ -146,48 +226,28 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
 
     auction.currentPrice = new_current_price
     await db.commit()
-    await db.refresh(bid, ["bidder"])
 
-    # Notify previous highest bidder
-    if current_highest_bid and current_highest_bid.bidderId != bidder_id:
-        await create_notification(
-            db, current_highest_bid.bidderId, "OUTBID", "You've been outbid!",
-            f'Another bidder has outbid you on "{auction.title}". Current price: ${new_current_price:.2f}',
-            {"auctionId": auction_id},
-        )
-        try:
-            await sio.emit("outbid", {
-                "auctionId": auction_id, "title": auction.title, "currentPrice": new_current_price,
-            }, room=f"user:{current_highest_bid.bidderId}")
-        except Exception:
-            pass
-
-    await create_notification(
-        db, bidder_id, "BID_PLACED", "Bid placed!",
-        f'Your bid of ${new_current_price:.2f} on "{auction.title}" was placed successfully.',
-        {"auctionId": auction_id},
-    )
-
-    bid_count_r = await db.execute(select(func.count(Bid.id)).where(Bid.auctionId == auction_id))
-    bid_count = bid_count_r.scalar()
-
+    # Try to load bidder info for the response, but don't fail if it errors
+    bidder_info = None
     try:
-        await sio.emit("bid-update", {
-            "auctionId": auction_id,
-            "currentPrice": new_current_price,
-            "bidCount": bid_count,
-            "highestBidderId": bidder_id,
-            "bidderUsername": bid.bidder.username if bid.bidder else None,
-        }, room=f"auction:{auction_id}")
+        await db.refresh(bid, ["bidder"])
+        if bid.bidder:
+            bidder_info = {"id": bid.bidder.id, "username": bid.bidder.username}
     except Exception:
         pass
+
+    # Fire-and-forget side effects (notifications, socket)
+    asyncio.create_task(_post_bid_side_effects(
+        auction_id, auction.title, bidder_id,
+        new_current_price, previous_bidder_id,
+    ))
 
     return {
         "bid": {
             "id": bid.id, "amount": bid.amount, "isProxy": bid.isProxy,
             "isWinning": bid.isWinning, "createdAt": bid.createdAt.isoformat(),
             "auctionId": bid.auctionId, "bidderId": bid.bidderId,
-            "bidder": {"id": bid.bidder.id, "username": bid.bidder.username} if bid.bidder else None,
+            "bidder": bidder_info,
         },
         "isHighestBidder": True,
         "currentPrice": new_current_price,
