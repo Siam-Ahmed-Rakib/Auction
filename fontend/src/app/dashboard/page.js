@@ -38,7 +38,7 @@ export default function DashboardPage() {
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Sidebar */}
         <aside className="w-full lg:w-56 flex-shrink-0">
-          <h2 className="text-xl font-bold mb-4">My AuctionHub</h2>
+          <h2 className="text-xl font-bold mb-4">My eBay</h2>
           <nav className="space-y-1">
             {sideLinks.map(link => (
               <Link

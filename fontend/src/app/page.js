@@ -144,7 +144,7 @@ export default function HomePage() {
         <section className="bg-blue-50 py-12 mt-8">
           <div className="max-w-[1400px] mx-auto px-4 lg:px-8 text-center">
             <h2 className="text-2xl font-bold mb-2">Ready to start bidding?</h2>
-            <p className="text-ebay-gray mb-6">Create an account to start buying and selling on AuctionHub.</p>
+            <p className="text-ebay-gray mb-6">Create an account to start buying and selling on eBay.</p>
             <Link href="/auth/register" className="inline-block bg-ebay-blue text-white rounded-full px-8 py-3 font-medium hover:bg-ebay-blue-dark transition">
               Register now
             </Link>

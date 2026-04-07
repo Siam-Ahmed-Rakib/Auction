@@ -392,7 +392,7 @@ export default function CheckoutPage() {
 
               <div className="mt-4 flex items-start gap-2 text-xs text-ebay-gray">
                 <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                <span>AuctionHub Money Back Guarantee. Get the item you ordered, or your money back.</span>
+                <span>eBay Money Back Guarantee. Get the item you ordered, or your money back.</span>
               </div>
             </div>
           </div>

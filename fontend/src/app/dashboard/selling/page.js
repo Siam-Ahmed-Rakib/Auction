@@ -62,7 +62,7 @@ export default function SellingPage() {
     <div className="max-w-[1400px] mx-auto px-4 lg:px-8 py-6">
       <div className="flex flex-col lg:flex-row gap-8">
         <aside className="w-full lg:w-56 flex-shrink-0">
-          <h2 className="text-xl font-bold mb-4">My AuctionHub</h2>
+          <h2 className="text-xl font-bold mb-4">My eBay</h2>
           <nav className="space-y-1 text-sm">
             <Link href="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-gray-100">Summary</Link>
             <Link href="/dashboard/bids" className="block px-3 py-2 rounded-lg hover:bg-gray-100">Bids & offers</Link>

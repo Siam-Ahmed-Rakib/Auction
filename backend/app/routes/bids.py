@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 
 from app.config.database import get_db
 from app.middleware.auth import get_current_user
-from app.models.models import Bid, User
+from app.models.models import Auction, Bid, User
 from app.services.bidding_engine import process_bid
 
 router = APIRouter(prefix="/api/bids", tags=["bids"])
@@ -71,8 +71,8 @@ async def get_my_bids(
         select(Bid)
         .where(Bid.bidderId == user.id)
         .options(
-            selectinload(Bid.auction).selectinload("seller"),
-            selectinload(Bid.auction).selectinload("bids"),
+            selectinload(Bid.auction).selectinload(Auction.seller),
+            selectinload(Bid.auction).selectinload(Auction.bids),
         )
         .order_by(Bid.createdAt.desc())
     )

@@ -177,7 +177,7 @@ export default function PaymentSuccessPage() {
 
       {/* Money back guarantee banner */}
       <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
-        <p className="text-sm font-medium text-ebay-blue">🛡️ AuctionHub Money Back Guarantee</p>
+        <p className="text-sm font-medium text-ebay-blue">🛡️ eBay Money Back Guarantee</p>
         <p className="text-xs text-ebay-gray mt-1">Get the item you ordered, or your money back. It&apos;s that simple.</p>
       </div>
     </div>
