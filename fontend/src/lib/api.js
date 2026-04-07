@@ -63,6 +63,7 @@ class ApiClient {
   async cancelAuction(id) { return this.request(`/auctions/${id}/cancel`, { method: 'POST' }); }
   async toggleWatch(id) { return this.request(`/auctions/${id}/watch`, { method: 'POST' }); }
   async getSellingAuctions(status) { return this.request(`/auctions/user/selling${status ? `?status=${status}` : ''}`); }
+  async getSellerAuctions(status) { return this.getSellingAuctions(status); }
 
   // Bids
   async placeBid(auctionId, data) { return this.request(`/bids/${auctionId}`, { method: 'POST', body: JSON.stringify(data) }); }
@@ -72,6 +73,7 @@ class ApiClient {
   // Orders
   async getBuyingOrders() { return this.request('/orders/buying'); }
   async getSellingOrders() { return this.request('/orders/selling'); }
+  async getSellerOrders() { return this.getSellingOrders(); }
   async getOrder(id) { return this.request(`/orders/${id}`); }
   async shipOrder(id, data) { return this.request(`/orders/${id}/ship`, { method: 'PUT', body: JSON.stringify(data) }); }
   async confirmDelivery(id) { return this.request(`/orders/${id}/deliver`, { method: 'POST' }); }

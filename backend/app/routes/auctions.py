@@ -62,7 +62,7 @@ async def get_user_selling(
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Auction).where(Auction.sellerId == user.id).options(
-        selectinload(Auction.bids)
+        selectinload(Auction.bids).selectinload(Bid.bidder)
     ).order_by(Auction.createdAt.desc())
 
     if status:
@@ -74,9 +74,35 @@ async def get_user_selling(
     items = []
     for a in auctions:
         bid_count = len(a.bids)
-        top_bid = sorted(a.bids, key=lambda b: b.amount, reverse=True)[:1]
+        unique_bidders = {}
+        for b in a.bids:
+            if b.bidderId not in unique_bidders:
+                unique_bidders[b.bidderId] = {
+                    "id": b.bidder.id if b.bidder else b.bidderId,
+                    "username": b.bidder.username if b.bidder else "Unknown",
+                    "name": b.bidder.name if b.bidder else "Unknown",
+                    "avatarUrl": b.bidder.avatarUrl if b.bidder else None,
+                }
+        sorted_bids = sorted(a.bids, key=lambda b: b.createdAt, reverse=True)
         d = auction_to_dict(a, bid_count=bid_count)
-        d["bids"] = [{"id": b.id, "amount": b.amount, "bidderId": b.bidderId} for b in top_bid]
+        d["uniqueBidderCount"] = len(unique_bidders)
+        d["bidders"] = list(unique_bidders.values())
+        d["bids"] = [
+            {
+                "id": b.id,
+                "amount": b.amount,
+                "isWinning": b.isWinning,
+                "createdAt": b.createdAt.isoformat() if b.createdAt else None,
+                "bidderId": b.bidderId,
+                "bidder": {
+                    "id": b.bidder.id,
+                    "username": b.bidder.username,
+                    "name": b.bidder.name,
+                    "avatarUrl": b.bidder.avatarUrl,
+                } if b.bidder else None,
+            }
+            for b in sorted_bids
+        ]
         items.append(d)
 
     return items
