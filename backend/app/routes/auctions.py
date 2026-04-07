@@ -108,7 +108,7 @@ async def get_user_selling(
     return items
 
 
-@router.get("/")
+@router.get("")
 async def list_auctions(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
@@ -243,7 +243,7 @@ class CreateAuctionRequest(BaseModel):
     startTime: str | None = None
 
 
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 async def create_auction(
     body: CreateAuctionRequest,
     user: User = Depends(get_current_user),

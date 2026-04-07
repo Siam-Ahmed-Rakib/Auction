@@ -23,7 +23,7 @@ class ResolveDisputeRequest(BaseModel):
     resolution: str
 
 
-@router.post("/", status_code=201)
+@router.post("", status_code=201)
 async def open_dispute(
     body: OpenDisputeRequest,
     user: User = Depends(get_current_user),
@@ -79,7 +79,7 @@ async def open_dispute(
     }
 
 
-@router.get("/")
+@router.get("")
 async def get_disputes(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
