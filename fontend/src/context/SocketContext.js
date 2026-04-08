@@ -2,7 +2,6 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from 'react';
 import { io } from 'socket.io-client';
 import { useAuth } from './AuthContext';
-import { supabase } from '@/lib/supabase';
 
 const SocketContext = createContext(null);
 
@@ -20,6 +19,13 @@ export function SocketProvider({ children }) {
     if (typeof window === 'undefined' || !user?.id) return;
 
     try {
+      // Dynamically import supabase to avoid SSR issues
+      const { supabase } = await import('@/lib/supabase');
+      if (!supabase) {
+        console.log('[SSE] Supabase not available');
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
         console.log('[SSE] No auth token, skipping connection');
@@ -48,7 +54,6 @@ export function SocketProvider({ children }) {
         try {
           const data = JSON.parse(event.data);
           console.log('[SSE] Notification:', data);
-          // Dispatch custom event for components to listen
           window.dispatchEvent(new CustomEvent('sse-notification', { detail: data }));
         } catch (e) {
           console.error('[SSE] Parse error:', e);
