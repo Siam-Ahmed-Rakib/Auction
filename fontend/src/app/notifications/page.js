@@ -48,15 +48,30 @@ export default function NotificationsPage() {
     if (user) loadNotifications();
   }, [user]);
 
-  // Listen for real-time notifications
+  // Listen for real-time notifications (Socket.IO and SSE)
   useEffect(() => {
+    const handleNotification = (data) => {
+      setNotifications(prev => [data, ...prev]);
+    };
+
+    // Socket.IO
     if (socket) {
-      const handleNotification = (data) => {
-        setNotifications(prev => [data, ...prev]);
-      };
       socket.on('notification', handleNotification);
-      return () => socket.off('notification', handleNotification);
     }
+
+    // SSE events
+    const handleSSENotification = (e) => {
+      handleNotification(e.detail);
+    };
+
+    window.addEventListener('sse-notification', handleSSENotification);
+
+    return () => {
+      if (socket) {
+        socket.off('notification', handleNotification);
+      }
+      window.removeEventListener('sse-notification', handleSSENotification);
+    };
   }, [socket]);
 
   async function loadNotifications() {

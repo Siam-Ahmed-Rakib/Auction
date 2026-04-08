@@ -1,3 +1,4 @@
+import logging
 import random
 import string
 from datetime import datetime
@@ -7,8 +8,11 @@ from sqlalchemy.orm import selectinload
 
 from app.config.database import async_session
 from app.config.socket import sio
-from app.models.models import Auction, AuctionStatus, Bid, Order
+from app.models.models import Auction, AuctionStatus, Bid, Order, User
 from app.services.notification_service import create_notification
+from app.services.webhook_service import notify_auction_ended
+
+logger = logging.getLogger(__name__)
 
 
 async def check_ended_auctions():
@@ -17,13 +21,19 @@ async def check_ended_auctions():
             result = await db.execute(
                 select(Auction)
                 .where(Auction.status == AuctionStatus.ACTIVE, Auction.endTime <= datetime.utcnow())
-                .options(selectinload(Auction.bids).selectinload(Bid.bidder))
+                .options(
+                    selectinload(Auction.bids).selectinload(Bid.bidder),
+                    selectinload(Auction.seller)
+                )
             )
             ended_auctions = result.scalars().all()
 
             for auction in ended_auctions:
                 sorted_bids = sorted(auction.bids, key=lambda b: b.amount, reverse=True)
                 winning_bid = sorted_bids[0] if sorted_bids else None
+
+                # Get seller username
+                seller_username = auction.seller.username if auction.seller else "Unknown"
 
                 if winning_bid:
                     meets_reserve = not auction.reservePrice or winning_bid.amount >= auction.reservePrice
@@ -45,20 +55,38 @@ async def check_ended_auctions():
                         db.add(order)
                         await db.commit()
 
-                        # Notify the winner
+                        winner_username = winning_bid.bidder.username if winning_bid.bidder else "a buyer"
+
+                        # Notify the winner via database + socket
                         await create_notification(
                             db, winning_bid.bidderId, "AUCTION_WON",
                             "Congratulations! You won!",
                             f'You won "{auction.title}" for ${winning_bid.amount:.2f}. Please complete payment.',
                             {"auctionId": auction.id},
                         )
-                        # Notify the seller
+                        # Notify the seller via database + socket
                         await create_notification(
                             db, auction.sellerId, "AUCTION_ENDED",
                             "Your auction has sold!",
-                            f'"{auction.title}" sold to {winning_bid.bidder.username if winning_bid.bidder else "a buyer"} for ${winning_bid.amount:.2f}.',
+                            f'"{auction.title}" sold to {winner_username} for ${winning_bid.amount:.2f}.',
                             {"auctionId": auction.id},
                         )
+
+                        # Send live webhook/SSE notifications for immediate delivery
+                        try:
+                            webhook_result = await notify_auction_ended(
+                                auction_id=auction.id,
+                                auction_title=auction.title,
+                                seller_id=auction.sellerId,
+                                seller_username=seller_username,
+                                winner_id=winning_bid.bidderId,
+                                winner_username=winner_username,
+                                final_price=winning_bid.amount,
+                                status=auction.status.value,
+                            )
+                            logger.info(f"Webhook notifications sent for auction {auction.id}: {webhook_result}")
+                        except Exception as e:
+                            logger.error(f"Failed to send webhook notifications for auction {auction.id}: {e}")
 
                         # Notify all other bidders that they lost
                         notified = {winning_bid.bidderId, auction.sellerId}
@@ -84,6 +112,21 @@ async def check_ended_auctions():
                             f'"{auction.title}" ended without meeting the reserve price.',
                             {"auctionId": auction.id},
                         )
+
+                        # Send webhook notification to seller
+                        try:
+                            await notify_auction_ended(
+                                auction_id=auction.id,
+                                auction_title=auction.title,
+                                seller_id=auction.sellerId,
+                                seller_username=seller_username,
+                                winner_id=None,
+                                winner_username=None,
+                                final_price=None,
+                                status=auction.status.value,
+                            )
+                        except Exception as e:
+                            logger.error(f"Failed to send webhook notification: {e}")
                 else:
                     auction.status = AuctionStatus.ENDED
                     await db.commit()
@@ -94,6 +137,21 @@ async def check_ended_auctions():
                         f'"{auction.title}" ended with no bids.',
                         {"auctionId": auction.id},
                     )
+
+                    # Send webhook notification to seller
+                    try:
+                        await notify_auction_ended(
+                            auction_id=auction.id,
+                            auction_title=auction.title,
+                            seller_id=auction.sellerId,
+                            seller_username=seller_username,
+                            winner_id=None,
+                            winner_username=None,
+                            final_price=None,
+                            status=auction.status.value,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send webhook notification: {e}")
 
                 # Emit socket events for real-time UI updates
                 try:
@@ -108,4 +166,4 @@ async def check_ended_auctions():
                     pass
 
         except Exception as e:
-            print(f"Auction scheduler error: {e}")
+            logger.error(f"Auction scheduler error: {e}")

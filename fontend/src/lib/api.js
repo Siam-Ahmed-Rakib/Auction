@@ -76,6 +76,7 @@ class ApiClient {
   async createAuction(data) { return this.request('/auctions', { method: 'POST', body: JSON.stringify(data) }); }
   async updateAuction(id, data) { return this.request(`/auctions/${id}`, { method: 'PUT', body: JSON.stringify(data) }); }
   async cancelAuction(id) { return this.request(`/auctions/${id}/cancel`, { method: 'POST' }); }
+  async checkAuctionEnded(id) { return this.request(`/auctions/${id}/check-ended`, { method: 'POST' }); }
   async toggleWatch(id) { return this.request(`/auctions/${id}/watch`, { method: 'POST' }); }
   async getSellingAuctions(status) { return this.request(`/auctions/user/selling${status ? `?status=${status}` : ''}`); }
   async getSellerAuctions(status) { return this.getSellingAuctions(status); }

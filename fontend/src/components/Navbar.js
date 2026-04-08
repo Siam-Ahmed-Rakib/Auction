@@ -45,9 +45,9 @@ export default function Navbar() {
     }
   }, [user]);
 
-  // Real-time notification updates via socket
+  // Real-time notification updates via socket and SSE
   useEffect(() => {
-    if (socket && user) {
+    if (user) {
       const handleNotification = () => {
         setUnreadCount(prev => prev + 1);
       };
@@ -60,11 +60,50 @@ export default function Navbar() {
         });
         setTimeout(() => setOutbidToast(null), 8000);
       };
-      socket.on('notification', handleNotification);
-      socket.on('outbid', handleOutbid);
+
+      // Socket.IO events
+      if (socket) {
+        socket.on('notification', handleNotification);
+        socket.on('outbid', handleOutbid);
+      }
+
+      // SSE events (webhook-style live notifications)
+      const handleSSENotification = (e) => {
+        handleNotification();
+      };
+      const handleSSEOutbid = (e) => {
+        handleOutbid(e.detail);
+      };
+      const handleSSEAuctionWon = (e) => {
+        handleNotification();
+        // Show a special toast for auction won
+        const data = e.detail;
+        setOutbidToast({
+          auctionId: data.auctionId,
+          title: `🎉 You won "${data.title}"!`,
+          currentPrice: data.finalPrice,
+          isWin: true,
+        });
+        setTimeout(() => setOutbidToast(null), 10000);
+      };
+      const handleSSEAuctionEnded = (e) => {
+        handleNotification();
+      };
+
+      window.addEventListener('sse-notification', handleSSENotification);
+      window.addEventListener('sse-outbid', handleSSEOutbid);
+      window.addEventListener('sse-auction-won', handleSSEAuctionWon);
+      window.addEventListener('sse-auction-ended', handleSSEAuctionEnded);
+
       return () => {
-        socket.off('notification', handleNotification);
-        socket.off('outbid', handleOutbid);
+        if (socket) {
+          socket.off('notification', handleNotification);
+          socket.off('outbid', handleOutbid);
+        }
+        window.removeEventListener('sse-notification', handleSSENotification);
+        window.removeEventListener('sse-outbid', handleSSEOutbid);
+        window.removeEventListener('sse-auction-won', handleSSEAuctionWon);
+        window.removeEventListener('sse-auction-ended', handleSSEAuctionEnded);
       };
     }
   }, [socket, user]);
@@ -271,25 +310,29 @@ export default function Navbar() {
         </div>
       )}
 
-      {/* Outbid Toast Notification */}
+      {/* Outbid/Won Toast Notification */}
       {outbidToast && (
-        <div className="fixed top-4 right-4 z-[100] bg-white border border-orange-200 rounded-xl shadow-xl p-4 max-w-sm animate-in slide-in-from-right">
+        <div className={`fixed top-4 right-4 z-[100] bg-white border rounded-xl shadow-xl p-4 max-w-sm animate-in slide-in-from-right ${outbidToast.isWin ? 'border-green-200' : 'border-orange-200'}`}>
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-              <Gavel className="w-5 h-5 text-orange-600" />
+            <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${outbidToast.isWin ? 'bg-green-100' : 'bg-orange-100'}`}>
+              <Gavel className={`w-5 h-5 ${outbidToast.isWin ? 'text-green-600' : 'text-orange-600'}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="font-bold text-sm text-orange-800">You&apos;ve been outbid!</p>
+              <p className={`font-bold text-sm ${outbidToast.isWin ? 'text-green-800' : 'text-orange-800'}`}>
+                {outbidToast.isWin ? 'Congratulations!' : 'You\'ve been outbid!'}
+              </p>
               <p className="text-sm text-gray-700 mt-0.5 truncate">{outbidToast.title}</p>
               {outbidToast.currentPrice && (
-                <p className="text-xs text-ebay-gray mt-0.5">Current price: {formatPrice(outbidToast.currentPrice)}</p>
+                <p className="text-xs text-ebay-gray mt-0.5">
+                  {outbidToast.isWin ? 'Final price:' : 'Current price:'} {formatPrice(outbidToast.currentPrice)}
+                </p>
               )}
               <Link
                 href={`/auctions/${outbidToast.auctionId}`}
                 onClick={() => setOutbidToast(null)}
                 className="inline-block text-xs text-ebay-blue hover:underline font-medium mt-2"
               >
-                View auction &rarr;
+                {outbidToast.isWin ? 'Complete payment →' : 'View auction →'}
               </Link>
             </div>
             <button onClick={() => setOutbidToast(null)} className="text-gray-400 hover:text-gray-600 text-lg leading-none">&times;</button>

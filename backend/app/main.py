@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.config.settings import settings
 from app.config.socket import sio
-from app.routes import auctions, auth, bids, disputes, feedback, notifications, orders, payments, search, users
+from app.routes import auctions, auth, bids, disputes, feedback, notifications, orders, payments, search, users, webhooks
 from app.services.auction_scheduler import check_ended_auctions
 
 scheduler = AsyncIOScheduler()
@@ -56,6 +56,7 @@ app.include_router(notifications.router)
 app.include_router(users.router)
 app.include_router(search.router)
 app.include_router(disputes.router)
+app.include_router(webhooks.router)
 
 
 @app.get("/api/health")

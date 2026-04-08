@@ -30,6 +30,19 @@ export default function AuctionDetailPage() {
   const [showBids, setShowBids] = useState(true);
   const [outbidToast, setOutbidToast] = useState(null);
   const [auctionTimeEnded, setAuctionTimeEnded] = useState(false);
+  const endCheckedRef = useRef(false);
+
+  const handleAuctionEnd = useCallback(async () => {
+    setAuctionTimeEnded(true);
+    if (endCheckedRef.current) return;
+    endCheckedRef.current = true;
+    try {
+      await api.checkAuctionEnded(id);
+      await loadAuction();
+    } catch (err) {
+      console.error('Failed to trigger auction end:', err);
+    }
+  }, [id]);
 
   const loadAuction = useCallback(async () => {
     try {

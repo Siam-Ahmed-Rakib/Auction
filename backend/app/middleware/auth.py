@@ -57,6 +57,14 @@ def _decode_supabase_token(token: str) -> dict:
     )
 
 
+def verify_token(token: str) -> dict:
+    """
+    Verify a JWT token and return its payload.
+    Raises JWTError if token is invalid.
+    """
+    return _decode_supabase_token(token)
+
+
 async def get_current_user(request: Request, db: AsyncSession = Depends(get_db)) -> User:
     auth_header = request.headers.get("authorization", "")
     if not auth_header.startswith("Bearer "):
