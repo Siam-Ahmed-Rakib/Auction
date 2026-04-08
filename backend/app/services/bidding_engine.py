@@ -29,24 +29,43 @@ async def _post_bid_side_effects(
     bidder_id: str,
     new_current_price: float,
     previous_bidder_id: str | None,
+    all_previous_bidder_ids: list[str] | None = None,
 ):
     """Run notifications and socket emissions in the background so they don't block the bid response."""
     try:
         async with async_session() as db:
-            # Notify previous highest bidder they were outbid
+            # Notify ALL previous bidders they were outbid (not just the highest)
+            notified_bidders = set()
+            bidders_to_notify = []
+            
+            # Add previous highest bidder
             if previous_bidder_id and previous_bidder_id != bidder_id:
+                bidders_to_notify.append(previous_bidder_id)
+            
+            # Add all other previous bidders
+            if all_previous_bidder_ids:
+                for bid_id in all_previous_bidder_ids:
+                    if bid_id != bidder_id and bid_id not in bidders_to_notify:
+                        bidders_to_notify.append(bid_id)
+            
+            for outbid_user_id in bidders_to_notify:
+                if outbid_user_id in notified_bidders:
+                    continue
+                notified_bidders.add(outbid_user_id)
+                
                 try:
                     await create_notification(
-                        db, previous_bidder_id, "OUTBID", "You've been outbid!",
+                        db, outbid_user_id, "OUTBID", "You've been outbid!",
                         f'Another bidder has outbid you on "{auction_title}". Current price: ${new_current_price:.2f}',
                         {"auctionId": auction_id},
                     )
                 except Exception as e:
-                    logger.error("Failed to create OUTBID notification for %s: %s", previous_bidder_id, e)
+                    logger.error("Failed to create OUTBID notification for %s: %s", outbid_user_id, e)
+                
                 try:
                     await sio.emit("outbid", {
                         "auctionId": auction_id, "title": auction_title, "currentPrice": new_current_price,
-                    }, room=f"user:{previous_bidder_id}")
+                    }, room=f"user:{outbid_user_id}")
                 except Exception as e:
                     logger.error("Failed to emit outbid socket event: %s", e)
 
@@ -220,6 +239,11 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
 
     previous_bidder_id = current_highest_bid.bidderId if current_highest_bid and current_highest_bid.bidderId != bidder_id else None
 
+    # Collect ALL previous bidder IDs to notify them all
+    all_previous_bidder_ids = list(set(
+        b.bidderId for b in sorted_bids if b.bidderId != bidder_id
+    ))
+
     # Mark previous winning bids
     await db.execute(
         update(Bid).where(Bid.auctionId == auction_id, Bid.isWinning == True).values(isWinning=False)
@@ -251,7 +275,7 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
     # Fire-and-forget side effects (notifications, socket)
     _fire_and_forget(_post_bid_side_effects(
         auction_id, auction.title, bidder_id,
-        new_current_price, previous_bidder_id,
+        new_current_price, previous_bidder_id, all_previous_bidder_ids,
     ))
 
     return {

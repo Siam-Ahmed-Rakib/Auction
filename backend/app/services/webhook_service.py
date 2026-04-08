@@ -117,12 +117,13 @@ async def notify_auction_ended(
     winner_username: str | None,
     final_price: float | None,
     status: str,
+    losing_bidder_ids: list[str] | None = None,
 ) -> dict:
     """
-    Send auction ended notifications to seller and winner via SSE/webhooks.
+    Send auction ended notifications to seller, winner, and all losing bidders via SSE/webhooks.
     Returns a summary of notifications sent.
     """
-    results = {"seller_notified": False, "winner_notified": False, "sse_clients": 0}
+    results = {"seller_notified": False, "winner_notified": False, "losers_notified": 0, "sse_clients": 0}
     
     # Notify seller
     seller_notification = {
@@ -156,6 +157,26 @@ async def notify_auction_ended(
         winner_sse_count = await broadcast_to_user(winner_id, "auction-won", winner_notification)
         results["sse_clients"] += winner_sse_count
         results["winner_notified"] = winner_sse_count > 0
+    
+    # Notify all losing bidders
+    if losing_bidder_ids:
+        loser_notification = {
+            "type": "AUCTION_ENDED",
+            "auctionId": auction_id,
+            "title": auction_title,
+            "status": status,
+            "finalPrice": final_price,
+            "message": f'"{auction_title}" has ended. Unfortunately, you did not win.'
+        }
+        
+        for loser_id in losing_bidder_ids:
+            try:
+                loser_sse_count = await broadcast_to_user(loser_id, "auction-ended", loser_notification)
+                results["sse_clients"] += loser_sse_count
+                if loser_sse_count > 0:
+                    results["losers_notified"] += 1
+            except Exception as e:
+                logger.error(f"Failed to notify losing bidder {loser_id}: {e}")
     
     return results
 

@@ -57,6 +57,12 @@ async def check_ended_auctions():
 
                         winner_username = winning_bid.bidder.username if winning_bid.bidder else "a buyer"
 
+                        # Collect all losing bidder IDs
+                        losing_bidder_ids = list(set(
+                            bid.bidderId for bid in sorted_bids 
+                            if bid.bidderId != winning_bid.bidderId and bid.bidderId != auction.sellerId
+                        ))
+
                         # Notify the winner via database + socket
                         await create_notification(
                             db, winning_bid.bidderId, "AUCTION_WON",
@@ -83,6 +89,7 @@ async def check_ended_auctions():
                                 winner_username=winner_username,
                                 final_price=winning_bid.amount,
                                 status=auction.status.value,
+                                losing_bidder_ids=losing_bidder_ids,
                             )
                             logger.info(f"Webhook notifications sent for auction {auction.id}: {webhook_result}")
                         except Exception as e:
