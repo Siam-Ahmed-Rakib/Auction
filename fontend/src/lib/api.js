@@ -15,7 +15,7 @@ class ApiClient {
     return null;
   }
 
-  async request(endpoint, options = {}, retries = 2) {
+  async request(endpoint, options = {}, retries = 3) {
     const url = `${this.baseUrl}${endpoint}`;
     const headers = {
       'Content-Type': 'application/json',
@@ -32,7 +32,7 @@ class ApiClient {
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 60000);
+        const timeout = setTimeout(() => controller.abort(), 90000);
         response = await fetch(url, {
           ...options,
           headers,
@@ -44,7 +44,7 @@ class ApiClient {
         lastErr = err;
         console.error(`Network error (attempt ${attempt + 1}) for ${options.method || 'GET'} ${url}:`, err);
         if (attempt < retries) {
-          await new Promise(r => setTimeout(r, 5000 * (attempt + 1)));
+          await new Promise(r => setTimeout(r, 3000));
         }
       }
     }
