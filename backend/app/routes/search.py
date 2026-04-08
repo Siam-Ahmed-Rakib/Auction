@@ -81,7 +81,7 @@ async def search_auctions(
             "startPrice": a.startPrice,
             "currentPrice": a.currentPrice,
             "bidIncrement": a.bidIncrement,
-            "endTime": a.endTime.isoformat() if a.endTime else None,
+            "endTime": (a.endTime.isoformat() + "Z") if a.endTime else None,
             "status": a.status.value if hasattr(a.status, "value") else a.status,
             "shippingCost": a.shippingCost,
             "views": a.views,

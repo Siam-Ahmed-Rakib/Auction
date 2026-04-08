@@ -13,6 +13,11 @@ from app.models.models import Auction, AuctionStatus, Bid, User, Watchlist
 router = APIRouter(prefix="/api/auctions", tags=["auctions"])
 
 
+def _utc_iso(dt):
+    """Serialize a naive-UTC datetime with 'Z' suffix so JS interprets it as UTC."""
+    return dt.isoformat() + "Z" if dt else None
+
+
 def auction_to_dict(auction, bid_count=None, watchlist_count=None, is_watching=False):
     d = {
         "id": auction.id,
@@ -25,16 +30,16 @@ def auction_to_dict(auction, bid_count=None, watchlist_count=None, is_watching=F
         "reservePrice": auction.reservePrice,
         "currentPrice": auction.currentPrice,
         "bidIncrement": auction.bidIncrement,
-        "startTime": auction.startTime.isoformat() if auction.startTime else None,
-        "endTime": auction.endTime.isoformat() if auction.endTime else None,
+        "startTime": _utc_iso(auction.startTime),
+        "endTime": _utc_iso(auction.endTime),
         "status": auction.status.value if hasattr(auction.status, "value") else auction.status,
         "shippingCost": auction.shippingCost,
         "shippingMethod": auction.shippingMethod,
         "location": auction.location,
         "returnPolicy": auction.returnPolicy,
         "views": auction.views,
-        "createdAt": auction.createdAt.isoformat() if auction.createdAt else None,
-        "updatedAt": auction.updatedAt.isoformat() if auction.updatedAt else None,
+        "createdAt": _utc_iso(auction.createdAt),
+        "updatedAt": _utc_iso(auction.updatedAt),
         "sellerId": auction.sellerId,
     }
     if hasattr(auction, "seller") and auction.seller:
@@ -46,7 +51,7 @@ def auction_to_dict(auction, bid_count=None, watchlist_count=None, is_watching=F
             "positiveRate": auction.seller.positiveRate,
             "totalRatings": auction.seller.totalRatings,
             "avatarUrl": auction.seller.avatarUrl,
-            "createdAt": auction.seller.createdAt.isoformat() if auction.seller.createdAt else None,
+            "createdAt": _utc_iso(auction.seller.createdAt),
         }
     if bid_count is not None:
         d["_count"] = {"bids": bid_count, "watchlist": watchlist_count or 0}
@@ -92,7 +97,7 @@ async def get_user_selling(
                 "id": b.id,
                 "amount": b.amount,
                 "isWinning": b.isWinning,
-                "createdAt": b.createdAt.isoformat() if b.createdAt else None,
+                "createdAt": _utc_iso(b.createdAt),
                 "bidderId": b.bidderId,
                 "bidder": {
                     "id": b.bidder.id,
@@ -214,7 +219,7 @@ async def get_auction(
             "amount": b.amount,
             "isProxy": b.isProxy,
             "isWinning": b.isWinning,
-            "createdAt": b.createdAt.isoformat(),
+            "createdAt": _utc_iso(b.createdAt),
             "auctionId": b.auctionId,
             "bidderId": b.bidderId,
             "bidder": {"id": b.bidder.id, "username": b.bidder.username} if b.bidder else None,

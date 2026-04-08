@@ -194,7 +194,7 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
             return {
                 "bid": {
                     "id": new_bid.id, "amount": new_bid.amount, "isProxy": new_bid.isProxy,
-                    "isWinning": new_bid.isWinning, "createdAt": new_bid.createdAt.isoformat(),
+                    "isWinning": new_bid.isWinning, "createdAt": (new_bid.createdAt.isoformat() + "Z") if new_bid.createdAt else None,
                     "auctionId": new_bid.auctionId, "bidderId": new_bid.bidderId,
                 },
                 "isHighestBidder": False,
@@ -257,7 +257,7 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
     return {
         "bid": {
             "id": bid.id, "amount": bid.amount, "isProxy": bid.isProxy,
-            "isWinning": bid.isWinning, "createdAt": bid.createdAt.isoformat(),
+            "isWinning": bid.isWinning, "createdAt": (bid.createdAt.isoformat() + "Z") if bid.createdAt else None,
             "auctionId": bid.auctionId, "bidderId": bid.bidderId,
             "bidder": bidder_info,
         },
