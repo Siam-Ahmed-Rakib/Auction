@@ -11,7 +11,7 @@ from app.models.models import Notification, User
 router = APIRouter(prefix="/api/notifications", tags=["notifications"])
 
 
-@router.get("/")
+@router.get("")
 async def get_notifications(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),

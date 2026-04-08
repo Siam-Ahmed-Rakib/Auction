@@ -21,7 +21,6 @@ export default function CreateAuctionPage() {
     condition: '',
     startPrice: '',
     reservePrice: '',
-    buyNowPrice: '',
     shippingCost: '',
     duration: '7',
   });
@@ -98,7 +97,6 @@ export default function CreateAuctionPage() {
     if (!form.condition) errs.condition = 'Select condition';
     if (!form.startPrice || parseFloat(form.startPrice) < 0.01) errs.startPrice = 'Starting price must be at least $0.01';
     if (form.reservePrice && parseFloat(form.reservePrice) < parseFloat(form.startPrice)) errs.reservePrice = 'Reserve must be ≥ starting price';
-    if (form.buyNowPrice && parseFloat(form.buyNowPrice) <= parseFloat(form.startPrice)) errs.buyNowPrice = 'Buy Now must exceed starting price';
     if (form.shippingCost && parseFloat(form.shippingCost) < 0) errs.shippingCost = 'Invalid shipping cost';
     return errs;
   }
@@ -117,7 +115,6 @@ export default function CreateAuctionPage() {
     setSubmitting(true);
     try {
       const imageUrls = images.filter(img => img.url).map(img => img.url);
-      const endTime = new Date(Date.now() + parseInt(form.duration) * 24 * 60 * 60 * 1000);
       const payload = {
         title: form.title.trim(),
         description: form.description.trim(),
@@ -125,9 +122,8 @@ export default function CreateAuctionPage() {
         condition: form.condition,
         startPrice: parseFloat(form.startPrice),
         reservePrice: form.reservePrice ? parseFloat(form.reservePrice) : undefined,
-        buyNowPrice: form.buyNowPrice ? parseFloat(form.buyNowPrice) : undefined,
         shippingCost: form.shippingCost ? parseFloat(form.shippingCost) : 0,
-        endTime: endTime.toISOString(),
+        duration: parseInt(form.duration),
         images: imageUrls,
       };
       const result = await api.createAuction(payload);
@@ -318,22 +314,6 @@ export default function CreateAuctionPage() {
               {errors.reservePrice && <p className="text-xs text-red-500 mt-1">{errors.reservePrice}</p>}
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Buy it Now <span className="text-xs text-ebay-gray font-normal">(optional)</span></label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ebay-gray text-sm">$</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={form.buyNowPrice}
-                  onChange={e => updateField('buyNowPrice', e.target.value)}
-                  placeholder="Instant purchase"
-                  className={`w-full border rounded-lg pl-7 pr-3 py-2 text-sm ${errors.buyNowPrice ? 'border-red-500' : 'border-gray-300'}`}
-                />
-              </div>
-              {errors.buyNowPrice && <p className="text-xs text-red-500 mt-1">{errors.buyNowPrice}</p>}
-            </div>
-            <div>
               <label className="block text-xs font-medium mb-1">Shipping Cost</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ebay-gray text-sm">$</span>
@@ -375,7 +355,7 @@ export default function CreateAuctionPage() {
 
         {/* Submit */}
         <div className="pt-4 border-t flex items-center justify-between">
-          <p className="text-xs text-ebay-gray">By listing, you agree to AuctionHub&apos;s seller terms.</p>
+          <p className="text-xs text-ebay-gray">By listing, you agree to eBay&apos;s seller terms.</p>
           <button
             type="submit"
             disabled={submitting}

@@ -10,7 +10,7 @@ from app.models.models import Auction, AuctionStatus, Bid, User
 router = APIRouter(prefix="/api/search", tags=["search"])
 
 
-@router.get("/")
+@router.get("")
 async def search_auctions(
     q: str | None = None,
     category: str | None = None,

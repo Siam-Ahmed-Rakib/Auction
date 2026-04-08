@@ -6,7 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import api from '@/lib/api';
 import { formatPrice, formatDate } from '@/lib/utils';
 import CountdownTimer from '@/components/CountdownTimer';
-import { Package, DollarSign, BarChart3, Truck, Plus, Eye, ChevronRight } from 'lucide-react';
+import { Package, DollarSign, BarChart3, Truck, Plus, Eye, ChevronRight, ChevronDown, ChevronUp, Users, Gavel } from 'lucide-react';
 
 export default function SellingPage() {
   const { user, loading: authLoading } = useAuth();
@@ -15,6 +15,7 @@ export default function SellingPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('active');
+  const [expandedAuction, setExpandedAuction] = useState(null);
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/auth/login');
@@ -62,7 +63,7 @@ export default function SellingPage() {
     <div className="max-w-[1400px] mx-auto px-4 lg:px-8 py-6">
       <div className="flex flex-col lg:flex-row gap-8">
         <aside className="w-full lg:w-56 flex-shrink-0">
-          <h2 className="text-xl font-bold mb-4">My AuctionHub</h2>
+          <h2 className="text-xl font-bold mb-4">My eBay</h2>
           <nav className="space-y-1 text-sm">
             <Link href="/dashboard" className="block px-3 py-2 rounded-lg hover:bg-gray-100">Summary</Link>
             <Link href="/dashboard/bids" className="block px-3 py-2 rounded-lg hover:bg-gray-100">Bids & offers</Link>
@@ -202,14 +203,24 @@ export default function SellingPage() {
                       <Link href={`/auctions/${auction.id}`} className="font-medium hover:text-ebay-blue">
                         {auction.title}
                       </Link>
-                      <div className="grid grid-cols-3 gap-4 mt-2 text-sm">
+                      <div className="grid grid-cols-4 gap-3 mt-2 text-sm">
                         <div>
                           <p className="text-xs text-ebay-gray">Current Price</p>
                           <p className="font-bold">{formatPrice(auction.currentPrice)}</p>
                         </div>
                         <div>
-                          <p className="text-xs text-ebay-gray">Bids</p>
-                          <p>{auction._count?.bids || 0}</p>
+                          <p className="text-xs text-ebay-gray">Total Bids</p>
+                          <p className="font-semibold flex items-center gap-1">
+                            <Gavel className="w-3.5 h-3.5 text-ebay-blue" />
+                            {auction._count?.bids || 0}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-ebay-gray">Unique Bidders</p>
+                          <p className="font-semibold flex items-center gap-1">
+                            <Users className="w-3.5 h-3.5 text-green-600" />
+                            {auction.uniqueBidderCount || 0}
+                          </p>
                         </div>
                         <div>
                           <p className="text-xs text-ebay-gray">{auction.status === 'ACTIVE' ? 'Time Left' : 'Status'}</p>
@@ -225,8 +236,49 @@ export default function SellingPage() {
                       <Link href={`/auctions/${auction.id}`} className="text-xs text-ebay-blue hover:underline flex items-center gap-0.5">
                         <Eye className="w-3 h-3" /> View <ChevronRight className="w-3 h-3" />
                       </Link>
+                      {(auction.bids?.length > 0) && (
+                        <button
+                          onClick={() => setExpandedAuction(expandedAuction === auction.id ? null : auction.id)}
+                          className="text-xs text-ebay-gray hover:text-ebay-blue flex items-center gap-0.5 mt-1"
+                        >
+                          {expandedAuction === auction.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          {expandedAuction === auction.id ? 'Hide' : 'Show'} Bids
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  {/* Expanded bid details */}
+                  {expandedAuction === auction.id && auction.bids?.length > 0 && (
+                    <div className="mt-4 border-t pt-4">
+                      <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                        <Users className="w-4 h-4 text-ebay-blue" />
+                        Bid History ({auction.bids.length} bids from {auction.uniqueBidderCount || 0} bidder{(auction.uniqueBidderCount || 0) !== 1 ? 's' : ''})
+                      </h4>
+                      <div className="space-y-2 max-h-64 overflow-y-auto">
+                        {auction.bids.map((bid, idx) => (
+                          <div key={bid.id} className={`flex items-center justify-between p-2.5 rounded-lg text-sm ${idx === 0 ? 'bg-green-50 border border-green-200' : 'bg-gray-50'}`}>
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-7 h-7 rounded-full bg-ebay-blue text-white flex items-center justify-center text-xs font-bold flex-shrink-0">
+                                {bid.bidder?.name?.[0]?.toUpperCase() || bid.bidder?.username?.[0]?.toUpperCase() || '?'}
+                              </div>
+                              <div>
+                                <p className="font-medium text-sm">{bid.bidder?.name || bid.bidder?.username || 'Unknown'}</p>
+                                <p className="text-xs text-ebay-gray">@{bid.bidder?.username || 'unknown'}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-bold">{formatPrice(bid.amount)}</p>
+                              <p className="text-xs text-ebay-gray">{bid.createdAt ? formatDate(bid.createdAt) : ''}</p>
+                            </div>
+                            {idx === 0 && (
+                              <span className="ml-2 bg-green-600 text-white text-[10px] px-2 py-0.5 rounded-full font-medium">Highest</span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

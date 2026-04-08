@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { useSocket } from '@/context/SocketContext';
 import api from '@/lib/api';
 import { formatDate } from '@/lib/utils';
 import { Bell, CheckCheck, Gavel, CreditCard, Package, Star, AlertTriangle, MessageSquare } from 'lucide-react';
@@ -23,9 +24,18 @@ const ICONS = {
   NEW_BID_ON_LISTING: <MessageSquare className="w-5 h-5 text-ebay-blue" />,
 };
 
+function getNotificationLink(notif) {
+  const auctionId = notif.data?.auctionId;
+  if (auctionId) return `/auctions/${auctionId}`;
+  const orderId = notif.data?.orderId;
+  if (orderId) return `/orders/${orderId}`;
+  return null;
+}
+
 export default function NotificationsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const socket = useSocket();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -37,10 +47,21 @@ export default function NotificationsPage() {
     if (user) loadNotifications();
   }, [user]);
 
+  // Listen for real-time notifications
+  useEffect(() => {
+    if (socket) {
+      const handleNotification = (data) => {
+        setNotifications(prev => [data, ...prev]);
+      };
+      socket.on('notification', handleNotification);
+      return () => socket.off('notification', handleNotification);
+    }
+  }, [socket]);
+
   async function loadNotifications() {
     try {
       const data = await api.getNotifications();
-      setNotifications(data);
+      setNotifications(data.notifications || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -48,9 +69,9 @@ export default function NotificationsPage() {
     }
   }
 
-  async function markRead(id) {
+  async function handleMarkRead(id) {
     try {
-      await api.markNotificationRead(id);
+      await api.markRead(id);
       setNotifications(prev =>
         prev.map(n => (n.id === id ? { ...n, read: true } : n))
       );
@@ -59,13 +80,19 @@ export default function NotificationsPage() {
     }
   }
 
-  async function markAllRead() {
+  async function handleMarkAllRead() {
     try {
-      await api.markAllNotificationsRead();
+      await api.markAllRead();
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     } catch (err) {
       console.error(err);
     }
+  }
+
+  function handleNotificationClick(notif) {
+    if (!notif.read) handleMarkRead(notif.id);
+    const link = getNotificationLink(notif);
+    if (link) router.push(link);
   }
 
   if (authLoading || !user) return null;
@@ -81,7 +108,7 @@ export default function NotificationsPage() {
         </div>
         {unreadCount > 0 && (
           <button
-            onClick={markAllRead}
+            onClick={handleMarkAllRead}
             className="text-sm text-ebay-blue hover:underline flex items-center gap-1"
           >
             <CheckCheck className="w-4 h-4" /> Mark all as read
@@ -109,37 +136,45 @@ export default function NotificationsPage() {
         </div>
       ) : (
         <div className="space-y-2">
-          {notifications.map(notif => (
-            <div
-              key={notif.id}
-              onClick={() => !notif.read && markRead(notif.id)}
-              className={`border rounded-xl p-4 flex gap-3 cursor-pointer transition hover:shadow-sm ${
-                !notif.read ? 'bg-blue-50 border-blue-200' : 'bg-white'
-              }`}
-            >
-              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
-                {ICONS[notif.type] || <Bell className="w-5 h-5 text-gray-400" />}
+          {notifications.map(notif => {
+            const link = getNotificationLink(notif);
+            return (
+              <div
+                key={notif.id}
+                onClick={() => handleNotificationClick(notif)}
+                className={`border rounded-xl p-4 flex gap-3 cursor-pointer transition hover:shadow-sm ${
+                  !notif.read ? 'bg-blue-50 border-blue-200' : 'bg-white'
+                }`}
+              >
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center">
+                  {ICONS[notif.type] || <Bell className="w-5 h-5 text-gray-400" />}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className={`text-sm font-semibold ${!notif.read ? 'text-ebay-dark' : 'text-gray-700'}`}>
+                    {notif.title}
+                  </p>
+                  <p className={`text-sm mt-0.5 ${!notif.read ? '' : 'text-ebay-gray'}`}>
+                    {notif.message}
+                  </p>
+                  <p className="text-xs text-ebay-gray mt-1">{formatDate(notif.createdAt)}</p>
+                </div>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {link && (
+                    <Link
+                      href={link}
+                      onClick={e => e.stopPropagation()}
+                      className="text-xs text-ebay-blue hover:underline bg-blue-50 px-3 py-1.5 rounded-full font-medium"
+                    >
+                      View item
+                    </Link>
+                  )}
+                  {!notif.read && (
+                    <div className="w-2.5 h-2.5 bg-ebay-blue rounded-full flex-shrink-0" />
+                  )}
+                </div>
               </div>
-              <div className="flex-1">
-                <p className={`text-sm ${!notif.read ? 'font-medium' : ''}`}>
-                  {notif.message}
-                </p>
-                <p className="text-xs text-ebay-gray mt-1">{formatDate(notif.createdAt)}</p>
-              </div>
-              {notif.auctionId && (
-                <Link
-                  href={`/auctions/${notif.auctionId}`}
-                  onClick={e => e.stopPropagation()}
-                  className="text-xs text-ebay-blue hover:underline self-center"
-                >
-                  View
-                </Link>
-              )}
-              {!notif.read && (
-                <div className="w-2.5 h-2.5 bg-ebay-blue rounded-full self-center flex-shrink-0" />
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
