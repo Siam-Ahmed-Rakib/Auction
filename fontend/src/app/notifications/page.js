@@ -38,6 +38,7 @@ export default function NotificationsPage() {
   const socket = useSocket();
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!authLoading && !user) router.push('/auth/login');
@@ -60,10 +61,12 @@ export default function NotificationsPage() {
 
   async function loadNotifications() {
     try {
+      setError(null);
       const data = await api.getNotifications();
       setNotifications(data.notifications || []);
     } catch (err) {
       console.error(err);
+      setError(err.message || 'Failed to load notifications');
     } finally {
       setLoading(false);
     }
@@ -127,6 +130,13 @@ export default function NotificationsPage() {
               </div>
             </div>
           ))}
+        </div>
+      ) : error ? (
+        <div className="text-center py-16 border border-red-200 rounded-xl bg-red-50">
+          <AlertTriangle className="w-12 h-12 mx-auto text-red-400 mb-4" />
+          <p className="text-lg font-bold mb-2">Failed to load notifications</p>
+          <p className="text-sm text-red-600 mb-4">{error}</p>
+          <button onClick={loadNotifications} className="text-sm text-ebay-blue hover:underline">Try again</button>
         </div>
       ) : notifications.length === 0 ? (
         <div className="text-center py-16 border rounded-xl">

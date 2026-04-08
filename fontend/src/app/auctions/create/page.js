@@ -22,10 +22,13 @@ export default function CreateAuctionPage() {
     startPrice: '',
     reservePrice: '',
     shippingCost: '',
-    duration: '7',
+    duration: '5m',
   });
 
   const durations = [
+    { value: '2m', label: '2 min' },
+    { value: '5m', label: '5 min' },
+    { value: '10m', label: '10 min' },
     { value: '1', label: '1 day' },
     { value: '3', label: '3 days' },
     { value: '5', label: '5 days' },
@@ -115,6 +118,13 @@ export default function CreateAuctionPage() {
     setSubmitting(true);
     try {
       const imageUrls = images.filter(img => img.url).map(img => img.url);
+      // Convert duration to minutes
+      let durationMinutes;
+      if (form.duration.endsWith('m')) {
+        durationMinutes = parseInt(form.duration);
+      } else {
+        durationMinutes = parseInt(form.duration) * 24 * 60;
+      }
       const payload = {
         title: form.title.trim(),
         description: form.description.trim(),
@@ -123,7 +133,7 @@ export default function CreateAuctionPage() {
         startPrice: parseFloat(form.startPrice),
         reservePrice: form.reservePrice ? parseFloat(form.reservePrice) : undefined,
         shippingCost: form.shippingCost ? parseFloat(form.shippingCost) : 0,
-        duration: parseInt(form.duration),
+        durationMinutes,
         images: imageUrls,
       };
       const result = await api.createAuction(payload);
@@ -184,7 +194,7 @@ export default function CreateAuctionPage() {
             >
               <option value="">Select category</option>
               {CATEGORIES.map(c => (
-                <option key={c.slug} value={c.slug}>{c.name}</option>
+                <option key={c.slug} value={c.name}>{c.name}</option>
               ))}
             </select>
             {errors.category && <p className="text-xs text-red-500 mt-1">{errors.category}</p>}

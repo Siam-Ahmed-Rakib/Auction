@@ -29,12 +29,17 @@ export default function AuctionDetailPage() {
   const [showShipping, setShowShipping] = useState(false);
   const [showBids, setShowBids] = useState(true);
   const [outbidToast, setOutbidToast] = useState(null);
+  const [auctionTimeEnded, setAuctionTimeEnded] = useState(false);
 
   const loadAuction = useCallback(async () => {
     try {
       const data = await api.getAuction(id);
       setAuction(data);
       setIsWatching(data.isWatching || false);
+      // Check if auction time has already passed
+      if (data.endTime && new Date(data.endTime) <= new Date()) {
+        setAuctionTimeEnded(true);
+      }
       const minBid = data.bids?.length > 0
         ? data.currentPrice + data.bidIncrement
         : data.startPrice;
@@ -71,10 +76,16 @@ export default function AuctionDetailPage() {
           setTimeout(() => setOutbidToast(null), 6000);
         }
       });
+      socket.on('auction-ended', (data) => {
+        if (data.auctionId === id) {
+          loadAuction();
+        }
+      });
       return () => {
         socket.emit('leave-auction', id);
         socket.off('bid-update');
         socket.off('outbid');
+        socket.off('auction-ended');
       };
     }
   }, [socket, id, loadAuction]);
@@ -132,7 +143,7 @@ export default function AuctionDetailPage() {
 
   const bidCount = auction._count?.bids || 0;
   const minBid = bidCount > 0 ? auction.currentPrice + auction.bidIncrement : auction.startPrice;
-  const isActive = auction.status === 'ACTIVE';
+  const isActive = auction.status === 'ACTIVE' && !auctionTimeEnded;
   const isSeller = user?.id === auction.sellerId;
 
   return (
@@ -208,7 +219,7 @@ export default function AuctionDetailPage() {
               {isActive && (
                 <span className="flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5" />
-                  <CountdownTimer endTime={auction.endTime} />
+                  <CountdownTimer endTime={auction.endTime} onEnd={() => setAuctionTimeEnded(true)} />
                 </span>
               )}
             </div>

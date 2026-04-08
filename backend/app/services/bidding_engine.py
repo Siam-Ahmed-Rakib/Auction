@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from datetime import datetime
 
 from sqlalchemy import func, select, update
@@ -9,6 +10,17 @@ from app.config.database import async_session
 from app.config.socket import sio
 from app.models.models import Auction, Bid
 from app.services.notification_service import create_notification
+
+logger = logging.getLogger(__name__)
+
+# prevent background tasks from being garbage-collected
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _fire_and_forget(coro):
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 async def _post_bid_side_effects(
@@ -29,14 +41,14 @@ async def _post_bid_side_effects(
                         f'Another bidder has outbid you on "{auction_title}". Current price: ${new_current_price:.2f}',
                         {"auctionId": auction_id},
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error("Failed to create OUTBID notification for %s: %s", previous_bidder_id, e)
                 try:
                     await sio.emit("outbid", {
                         "auctionId": auction_id, "title": auction_title, "currentPrice": new_current_price,
                     }, room=f"user:{previous_bidder_id}")
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error("Failed to emit outbid socket event: %s", e)
 
             # Notify bidder
             try:
@@ -45,8 +57,8 @@ async def _post_bid_side_effects(
                     f'Your bid of ${new_current_price:.2f} on "{auction_title}" was placed successfully.',
                     {"auctionId": auction_id},
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Failed to create BID_PLACED notification for %s: %s", bidder_id, e)
 
             # Emit bid update to auction room
             bid_count_r = await db.execute(select(func.count(Bid.id)).where(Bid.auctionId == auction_id))
@@ -59,10 +71,10 @@ async def _post_bid_side_effects(
                     "bidCount": bid_count,
                     "highestBidderId": bidder_id,
                 }, room=f"auction:{auction_id}")
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                logger.error("Failed to emit bid-update socket event: %s", e)
+    except Exception as e:
+        logger.error("_post_bid_side_effects failed: %s", e, exc_info=True)
 
 
 async def _post_outbid_side_effects(
@@ -81,8 +93,8 @@ async def _post_outbid_side_effects(
                     f'Someone has a higher maximum bid on "{auction_title}". Current price: ${new_current_price:.2f}',
                     {"auctionId": auction_id},
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error("Failed to create OUTBID notification for %s: %s", bidder_id, e)
 
             bid_count_r = await db.execute(select(func.count(Bid.id)).where(Bid.auctionId == auction_id))
             bid_count = bid_count_r.scalar()
@@ -95,10 +107,10 @@ async def _post_outbid_side_effects(
                     "highestBidderId": winning_bidder_id,
                 }, room=f"auction:{auction_id}")
                 await sio.emit("outbid", {"auctionId": auction_id, "title": auction_title}, room=f"user:{bidder_id}")
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                logger.error("Failed to emit outbid socket events: %s", e)
+    except Exception as e:
+        logger.error("_post_outbid_side_effects failed: %s", e, exc_info=True)
 
 
 async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount: float, max_bid: float) -> dict:
@@ -174,7 +186,7 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
             await db.refresh(new_bid)
 
             # Fire-and-forget side effects (notifications, socket)
-            asyncio.create_task(_post_outbid_side_effects(
+            _fire_and_forget(_post_outbid_side_effects(
                 auction_id, auction.title, bidder_id,
                 new_current_price, current_highest_bid.bidderId,
             ))
@@ -182,7 +194,7 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
             return {
                 "bid": {
                     "id": new_bid.id, "amount": new_bid.amount, "isProxy": new_bid.isProxy,
-                    "isWinning": new_bid.isWinning, "createdAt": new_bid.createdAt.isoformat(),
+                    "isWinning": new_bid.isWinning, "createdAt": (new_bid.createdAt.isoformat() + "Z") if new_bid.createdAt else None,
                     "auctionId": new_bid.auctionId, "bidderId": new_bid.bidderId,
                 },
                 "isHighestBidder": False,
@@ -237,7 +249,7 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
         pass
 
     # Fire-and-forget side effects (notifications, socket)
-    asyncio.create_task(_post_bid_side_effects(
+    _fire_and_forget(_post_bid_side_effects(
         auction_id, auction.title, bidder_id,
         new_current_price, previous_bidder_id,
     ))
@@ -245,7 +257,7 @@ async def process_bid(db: AsyncSession, auction_id: str, bidder_id: str, amount:
     return {
         "bid": {
             "id": bid.id, "amount": bid.amount, "isProxy": bid.isProxy,
-            "isWinning": bid.isWinning, "createdAt": bid.createdAt.isoformat(),
+            "isWinning": bid.isWinning, "createdAt": (bid.createdAt.isoformat() + "Z") if bid.createdAt else None,
             "auctionId": bid.auctionId, "bidderId": bid.bidderId,
             "bidder": bidder_info,
         },

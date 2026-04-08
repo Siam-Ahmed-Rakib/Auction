@@ -1,7 +1,11 @@
+import logging
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.socket import sio
 from app.models.models import Notification
+
+logger = logging.getLogger(__name__)
 
 
 async def create_notification(
@@ -37,7 +41,7 @@ async def create_notification(
             },
             room=f"user:{user_id}",
         )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("Failed to emit notification socket event to user %s: %s", user_id, e)
 
     return notification

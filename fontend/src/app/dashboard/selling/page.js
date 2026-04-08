@@ -40,9 +40,9 @@ export default function SellingPage() {
     }
   }
 
-  async function shipOrder(orderId, trackingNumber) {
+  async function shipOrder(orderId, trackingNumber, carrier) {
     try {
-      await api.shipOrder(orderId, trackingNumber);
+      await api.shipOrder(orderId, { trackingNumber, shippingCarrier: carrier || 'Standard' });
       loadData();
     } catch (err) {
       alert(err.message);
@@ -131,7 +131,10 @@ export default function SellingPage() {
                     <button
                       onClick={() => {
                         const tracking = prompt('Enter tracking number:');
-                        if (tracking) shipOrder(order.id, tracking);
+                        if (tracking) {
+                          const carrier = prompt('Enter shipping carrier (e.g. USPS, FedEx, DHL):') || 'Standard';
+                          shipOrder(order.id, tracking, carrier);
+                        }
                       }}
                       className="bg-ebay-blue text-white rounded-full px-4 py-1.5 text-xs font-medium hover:bg-ebay-blue-dark"
                     >

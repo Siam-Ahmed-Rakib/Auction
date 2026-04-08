@@ -3,7 +3,6 @@ import string
 from datetime import datetime
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.config.database import async_session
@@ -46,18 +45,35 @@ async def check_ended_auctions():
                         db.add(order)
                         await db.commit()
 
+                        # Notify the winner
                         await create_notification(
                             db, winning_bid.bidderId, "AUCTION_WON",
                             "Congratulations! You won!",
                             f'You won "{auction.title}" for ${winning_bid.amount:.2f}. Please complete payment.',
                             {"auctionId": auction.id},
                         )
+                        # Notify the seller
                         await create_notification(
                             db, auction.sellerId, "AUCTION_ENDED",
                             "Your auction has sold!",
-                            f'"{auction.title}" sold for ${winning_bid.amount:.2f}.',
+                            f'"{auction.title}" sold to {winning_bid.bidder.username if winning_bid.bidder else "a buyer"} for ${winning_bid.amount:.2f}.',
                             {"auctionId": auction.id},
                         )
+
+                        # Notify all other bidders that they lost
+                        notified = {winning_bid.bidderId, auction.sellerId}
+                        for bid in sorted_bids:
+                            if bid.bidderId not in notified:
+                                notified.add(bid.bidderId)
+                                try:
+                                    await create_notification(
+                                        db, bid.bidderId, "AUCTION_ENDED",
+                                        "Auction ended",
+                                        f'"{auction.title}" has ended. Unfortunately, you did not win.',
+                                        {"auctionId": auction.id},
+                                    )
+                                except Exception:
+                                    pass
                     else:
                         auction.status = AuctionStatus.RESERVE_NOT_MET
                         await db.commit()
@@ -79,10 +95,13 @@ async def check_ended_auctions():
                         {"auctionId": auction.id},
                     )
 
+                # Emit socket events for real-time UI updates
                 try:
                     await sio.emit("auction-ended", {
                         "auctionId": auction.id,
+                        "status": auction.status.value,
                         "winnerId": winning_bid.bidderId if winning_bid else None,
+                        "winnerUsername": winning_bid.bidder.username if winning_bid and winning_bid.bidder else None,
                         "finalPrice": winning_bid.amount if winning_bid else None,
                     }, room=f"auction:{auction.id}")
                 except Exception:
