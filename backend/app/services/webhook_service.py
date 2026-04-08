@@ -196,6 +196,7 @@ async def notify_outbid(
         "message": f'You\'ve been outbid on "{auction_title}". Current price: ${new_price:.2f}'
     }
     
+    
     return await broadcast_to_user(bidder_id, "outbid", notification)
 
 
