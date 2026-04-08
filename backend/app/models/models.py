@@ -16,7 +16,7 @@ from sqlalchemy import (
     TypeDecorator,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.config.database import Base
@@ -181,7 +181,7 @@ class Auction(Base):
     id: Mapped[str] = mapped_column(StringUUID(), primary_key=True, default=lambda: str(uuid.uuid4()))
     title: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    images: Mapped[list] = mapped_column(JSONEncodedList(), default=[])
+    images: Mapped[list] = mapped_column(ARRAY(String), default=[])
     category: Mapped[str] = mapped_column(String, nullable=False)
     condition: Mapped[str] = mapped_column(String, default="New")
     startPrice: Mapped[float] = mapped_column(Float, nullable=False)
