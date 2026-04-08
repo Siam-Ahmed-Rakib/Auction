@@ -102,16 +102,34 @@ export function SocketProvider({ children }) {
         }
       });
 
+      eventSource.addEventListener('bid-update', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('[SSE] Bid update:', data);
+          window.dispatchEvent(new CustomEvent('sse-bid-placed', { detail: data }));
+        } catch (e) {
+          console.error('[SSE] Parse error:', e);
+        }
+      });
+
       eventSource.onerror = (error) => {
         console.error('[SSE] Connection error:', error);
         eventSource.close();
         eventSourceRef.current = null;
         
-        // Reconnect after 5 seconds
+        // Reconnect with backoff, refresh token first
         if (reconnectTimeoutRef.current) {
           clearTimeout(reconnectTimeoutRef.current);
         }
-        reconnectTimeoutRef.current = setTimeout(connectSSE, 5000);
+        reconnectTimeoutRef.current = setTimeout(async () => {
+          try {
+            const { supabase: sb } = await import('@/lib/supabase');
+            if (sb) await sb.auth.refreshSession();
+          } catch (e) {
+            console.error('[SSE] Token refresh failed:', e);
+          }
+          connectSSE();
+        }, 5000);
       };
 
     } catch (error) {

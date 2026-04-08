@@ -65,6 +65,19 @@ export default function Navbar() {
       if (socket) {
         socket.on('notification', handleNotification);
         socket.on('outbid', handleOutbid);
+        socket.on('auction-won', (data) => {
+          handleNotification();
+          setOutbidToast({
+            auctionId: data.auctionId,
+            title: `🎉 You won "${data.title || 'an auction'}"!`,
+            currentPrice: data.finalPrice,
+            isWin: true,
+          });
+          setTimeout(() => setOutbidToast(null), 10000);
+        });
+        socket.on('auction-ended', (data) => {
+          handleNotification();
+        });
       }
 
       // SSE events (webhook-style live notifications)
@@ -99,6 +112,8 @@ export default function Navbar() {
         if (socket) {
           socket.off('notification', handleNotification);
           socket.off('outbid', handleOutbid);
+          socket.off('auction-won');
+          socket.off('auction-ended');
         }
         window.removeEventListener('sse-notification', handleSSENotification);
         window.removeEventListener('sse-outbid', handleSSEOutbid);

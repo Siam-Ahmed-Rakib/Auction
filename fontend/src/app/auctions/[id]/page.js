@@ -94,14 +94,66 @@ export default function AuctionDetailPage() {
           loadAuction();
         }
       });
+      socket.on('auction-won', (data) => {
+        if (data.auctionId === id) {
+          loadAuction();
+        }
+      });
       return () => {
         socket.emit('leave-auction', id);
         socket.off('bid-update');
         socket.off('outbid');
         socket.off('auction-ended');
+        socket.off('auction-won');
       };
     }
   }, [socket, id, loadAuction]);
+
+  // SSE event listeners (fallback when Socket.IO is disconnected)
+  useEffect(() => {
+    const handleSSEBidUpdate = (e) => {
+      const data = e.detail;
+      if (data.auctionId === id) {
+        setAuction(prev => prev ? {
+          ...prev,
+          currentPrice: data.currentPrice,
+          _count: { ...prev._count, bids: data.bidCount }
+        } : prev);
+        loadAuction();
+      }
+    };
+    const handleSSEOutbid = (e) => {
+      const data = e.detail;
+      if (data.auctionId === id) {
+        setOutbidToast({ title: data.title, currentPrice: data.currentPrice });
+        setTimeout(() => setOutbidToast(null), 6000);
+      }
+    };
+    const handleSSEAuctionEnded = (e) => {
+      const data = e.detail;
+      if (data.auctionId === id) {
+        loadAuction();
+      }
+    };
+    const handleSSEAuctionWon = (e) => {
+      const data = e.detail;
+      if (data.auctionId === id) {
+        loadAuction();
+      }
+    };
+
+    window.addEventListener('sse-bid-placed', handleSSEBidUpdate);
+    window.addEventListener('sse-outbid', handleSSEOutbid);
+    window.addEventListener('sse-auction-ended', handleSSEAuctionEnded);
+    window.addEventListener('sse-auction-won', handleSSEAuctionWon);
+
+    return () => {
+      window.removeEventListener('sse-bid-placed', handleSSEBidUpdate);
+      window.removeEventListener('sse-outbid', handleSSEOutbid);
+      window.removeEventListener('sse-auction-ended', handleSSEAuctionEnded);
+      window.removeEventListener('sse-auction-won', handleSSEAuctionWon);
+    };
+  }, [id, loadAuction]);
 
   const handlePlaceBid = async () => {
     if (!user) return router.push('/auth/login');

@@ -54,23 +54,38 @@ export default function NotificationsPage() {
       setNotifications(prev => [data, ...prev]);
     };
 
+    const handleRefreshNotifications = () => {
+      loadNotifications();
+    };
+
     // Socket.IO
     if (socket) {
       socket.on('notification', handleNotification);
+      socket.on('auction-won', handleRefreshNotifications);
+      socket.on('auction-ended', handleRefreshNotifications);
     }
 
     // SSE events
     const handleSSENotification = (e) => {
       handleNotification(e.detail);
     };
+    const handleSSEAuctionEvent = () => {
+      loadNotifications();
+    };
 
     window.addEventListener('sse-notification', handleSSENotification);
+    window.addEventListener('sse-auction-won', handleSSEAuctionEvent);
+    window.addEventListener('sse-auction-ended', handleSSEAuctionEvent);
 
     return () => {
       if (socket) {
         socket.off('notification', handleNotification);
+        socket.off('auction-won', handleRefreshNotifications);
+        socket.off('auction-ended', handleRefreshNotifications);
       }
       window.removeEventListener('sse-notification', handleSSENotification);
+      window.removeEventListener('sse-auction-won', handleSSEAuctionEvent);
+      window.removeEventListener('sse-auction-ended', handleSSEAuctionEvent);
     };
   }, [socket]);
 

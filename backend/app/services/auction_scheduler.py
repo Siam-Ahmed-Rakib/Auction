@@ -25,6 +25,7 @@ async def check_ended_auctions():
                     selectinload(Auction.bids).selectinload(Bid.bidder),
                     selectinload(Auction.seller)
                 )
+                .with_for_update(skip_locked=True)
             )
             ended_auctions = result.scalars().all()
 
@@ -161,14 +162,20 @@ async def check_ended_auctions():
                         logger.error(f"Failed to send webhook notification: {e}")
 
                 # Emit socket events for real-time UI updates
+                auction_ended_payload = {
+                    "auctionId": auction.id,
+                    "status": auction.status.value,
+                    "winnerId": winning_bid.bidderId if winning_bid else None,
+                    "winnerUsername": winning_bid.bidder.username if winning_bid and winning_bid.bidder else None,
+                    "finalPrice": winning_bid.amount if winning_bid else None,
+                }
                 try:
-                    await sio.emit("auction-ended", {
-                        "auctionId": auction.id,
-                        "status": auction.status.value,
-                        "winnerId": winning_bid.bidderId if winning_bid else None,
-                        "winnerUsername": winning_bid.bidder.username if winning_bid and winning_bid.bidder else None,
-                        "finalPrice": winning_bid.amount if winning_bid else None,
-                    }, room=f"auction:{auction.id}")
+                    # Emit to auction room (users currently viewing)
+                    await sio.emit("auction-ended", auction_ended_payload, room=f"auction:{auction.id}")
+                    # Emit to winner's and seller's user rooms (they may not be on the auction page)
+                    if winning_bid:
+                        await sio.emit("auction-won", auction_ended_payload, room=f"user:{winning_bid.bidderId}")
+                    await sio.emit("auction-ended", auction_ended_payload, room=f"user:{auction.sellerId}")
                 except Exception:
                     pass
 

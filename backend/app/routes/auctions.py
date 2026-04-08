@@ -381,11 +381,14 @@ async def check_auction_ended(
     import string
     from app.models.models import Order
     from app.services.notification_service import create_notification
+    from app.services.webhook_service import notify_auction_ended
 
+    # Use FOR UPDATE to prevent race condition with the background scheduler
     result = await db.execute(
         select(Auction)
         .where(Auction.id == auction_id)
-        .options(selectinload(Auction.bids).selectinload(Bid.bidder))
+        .options(selectinload(Auction.bids).selectinload(Bid.bidder), selectinload(Auction.seller))
+        .with_for_update()
     )
     auction = result.scalar_one_or_none()
     if not auction:
@@ -399,6 +402,8 @@ async def check_auction_ended(
     # Only process if end time has actually passed
     if datetime.utcnow() < auction.endTime:
         return {"status": "ACTIVE", "message": "Auction has not ended yet"}
+
+    seller_username = auction.seller.username if auction.seller else "Unknown"
 
     sorted_bids = sorted(auction.bids, key=lambda b: b.amount, reverse=True)
     winning_bid = sorted_bids[0] if sorted_bids else None
@@ -438,6 +443,14 @@ async def check_auction_ended(
                 {"auctionId": auction.id},
             )
 
+            winner_username = winning_bid.bidder.username if winning_bid.bidder else "a buyer"
+
+            # Collect all losing bidder IDs
+            losing_bidder_ids = list(set(
+                bid.bidderId for bid in sorted_bids
+                if bid.bidderId != winning_bid.bidderId and bid.bidderId != auction.sellerId
+            ))
+
             # Notify all other bidders that they lost
             notified = {winning_bid.bidderId, auction.sellerId}
             for bid in sorted_bids:
@@ -452,6 +465,22 @@ async def check_auction_ended(
                         )
                     except Exception:
                         pass
+
+            # Send live SSE/webhook notifications for immediate delivery
+            try:
+                await notify_auction_ended(
+                    auction_id=auction.id,
+                    auction_title=auction.title,
+                    seller_id=auction.sellerId,
+                    seller_username=seller_username,
+                    winner_id=winning_bid.bidderId,
+                    winner_username=winner_username,
+                    final_price=winning_bid.amount,
+                    status=auction.status.value if hasattr(auction.status, "value") else auction.status,
+                    losing_bidder_ids=losing_bidder_ids,
+                )
+            except Exception:
+                pass
         else:
             auction.status = AuctionStatus.RESERVE_NOT_MET
             await db.commit()
@@ -462,6 +491,20 @@ async def check_auction_ended(
                 f'"{auction.title}" ended without meeting the reserve price.',
                 {"auctionId": auction.id},
             )
+
+            try:
+                await notify_auction_ended(
+                    auction_id=auction.id,
+                    auction_title=auction.title,
+                    seller_id=auction.sellerId,
+                    seller_username=seller_username,
+                    winner_id=None,
+                    winner_username=None,
+                    final_price=None,
+                    status=auction.status.value if hasattr(auction.status, "value") else auction.status,
+                )
+            except Exception:
+                pass
     else:
         auction.status = AuctionStatus.ENDED
         await db.commit()
@@ -473,16 +516,36 @@ async def check_auction_ended(
             {"auctionId": auction.id},
         )
 
+        try:
+            await notify_auction_ended(
+                auction_id=auction.id,
+                auction_title=auction.title,
+                seller_id=auction.sellerId,
+                seller_username=seller_username,
+                winner_id=None,
+                winner_username=None,
+                final_price=None,
+                status=auction.status.value if hasattr(auction.status, "value") else auction.status,
+            )
+        except Exception:
+            pass
+
     # Emit socket event for real-time UI updates
     from app.config.socket import sio
+    auction_ended_payload = {
+        "auctionId": auction.id,
+        "status": auction.status.value if hasattr(auction.status, "value") else auction.status,
+        "winnerId": winning_bid.bidderId if winning_bid else None,
+        "winnerUsername": winning_bid.bidder.username if winning_bid and winning_bid.bidder else None,
+        "finalPrice": winning_bid.amount if winning_bid else None,
+    }
     try:
-        await sio.emit("auction-ended", {
-            "auctionId": auction.id,
-            "status": auction.status.value if hasattr(auction.status, "value") else auction.status,
-            "winnerId": winning_bid.bidderId if winning_bid else None,
-            "winnerUsername": winning_bid.bidder.username if winning_bid and winning_bid.bidder else None,
-            "finalPrice": winning_bid.amount if winning_bid else None,
-        }, room=f"auction:{auction.id}")
+        # Emit to auction room (for users viewing the page)
+        await sio.emit("auction-ended", auction_ended_payload, room=f"auction:{auction.id}")
+        # Also emit to winner's and seller's user rooms (they may not be on the auction page)
+        if winning_bid:
+            await sio.emit("auction-won", auction_ended_payload, room=f"user:{winning_bid.bidderId}")
+        await sio.emit("auction-ended", auction_ended_payload, room=f"user:{auction.sellerId}")
     except Exception:
         pass
 

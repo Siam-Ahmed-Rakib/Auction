@@ -10,6 +10,7 @@ from app.config.database import async_session
 from app.config.socket import sio
 from app.models.models import Auction, Bid
 from app.services.notification_service import create_notification
+from app.services.webhook_service import broadcast_to_user
 
 logger = logging.getLogger(__name__)
 
@@ -83,15 +84,27 @@ async def _post_bid_side_effects(
             bid_count_r = await db.execute(select(func.count(Bid.id)).where(Bid.auctionId == auction_id))
             bid_count = bid_count_r.scalar()
 
+            bid_update_payload = {
+                "auctionId": auction_id,
+                "currentPrice": new_current_price,
+                "bidCount": bid_count,
+                "highestBidderId": bidder_id,
+            }
+
             try:
-                await sio.emit("bid-update", {
-                    "auctionId": auction_id,
-                    "currentPrice": new_current_price,
-                    "bidCount": bid_count,
-                    "highestBidderId": bidder_id,
-                }, room=f"auction:{auction_id}")
+                await sio.emit("bid-update", bid_update_payload, room=f"auction:{auction_id}")
             except Exception as e:
                 logger.error("Failed to emit bid-update socket event: %s", e)
+
+            # Also broadcast bid-update via SSE for users whose Socket.IO may be disconnected
+            try:
+                await broadcast_to_user(bidder_id, "bid-placed", bid_update_payload)
+                # Notify all previous bidders of the update via SSE
+                if all_previous_bidder_ids:
+                    for prev_id in all_previous_bidder_ids:
+                        await broadcast_to_user(prev_id, "bid-update", bid_update_payload)
+            except Exception as e:
+                logger.error("Failed to broadcast bid-update via SSE: %s", e)
     except Exception as e:
         logger.error("_post_bid_side_effects failed: %s", e, exc_info=True)
 
@@ -118,16 +131,25 @@ async def _post_outbid_side_effects(
             bid_count_r = await db.execute(select(func.count(Bid.id)).where(Bid.auctionId == auction_id))
             bid_count = bid_count_r.scalar()
 
+            bid_update_payload = {
+                "auctionId": auction_id,
+                "currentPrice": new_current_price,
+                "bidCount": bid_count,
+                "highestBidderId": winning_bidder_id,
+            }
+
             try:
-                await sio.emit("bid-update", {
-                    "auctionId": auction_id,
-                    "currentPrice": new_current_price,
-                    "bidCount": bid_count,
-                    "highestBidderId": winning_bidder_id,
-                }, room=f"auction:{auction_id}")
-                await sio.emit("outbid", {"auctionId": auction_id, "title": auction_title}, room=f"user:{bidder_id}")
+                await sio.emit("bid-update", bid_update_payload, room=f"auction:{auction_id}")
+                await sio.emit("outbid", {"auctionId": auction_id, "title": auction_title, "currentPrice": new_current_price}, room=f"user:{bidder_id}")
             except Exception as e:
                 logger.error("Failed to emit outbid socket events: %s", e)
+
+            # Also broadcast via SSE
+            try:
+                await broadcast_to_user(bidder_id, "bid-update", bid_update_payload)
+                await broadcast_to_user(winning_bidder_id, "bid-update", bid_update_payload)
+            except Exception as e:
+                logger.error("Failed to broadcast bid-update via SSE: %s", e)
     except Exception as e:
         logger.error("_post_outbid_side_effects failed: %s", e, exc_info=True)
 
